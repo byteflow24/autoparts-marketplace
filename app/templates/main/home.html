@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Home | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+
+<!-- =========================
+     Hero Section
+========================== -->
+<section class="hero">
+    <div class="container hero-content">
+        <div class="hero-text">
+            <h1>Find Auto Parts from Trusted Garages</h1>
+            <p>
+                Search parts, compare garage offers, and order with delivery
+                or installation options.
+            </p>
+
+            <div class="hero-buttons">
+                <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Get Started</a>
+                <a href="{{ url_for('search.search_page') }}" class="btn btn-secondary">Search Parts</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- =========================
+     How It Works
+========================== -->
+<section class="features-section">
+    <div class="container">
+        <h2 class="section-title">How It Works</h2>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3>Search Parts</h3>
+                <p>Find parts by number or filter by car make, model, and year.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>Compare Garages</h3>
+                <p>Check prices, stock availability, and service options from different garages.</p>
+            </div>
+
+            <div class="feature-card">
+                <h3>Order Easily</h3>
+                <p>Place orders for delivery or installation in a simple checkout flow.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- =========================
+     For Customers and Garages
+========================== -->
+<section class="roles-section">
+    <div class="container">
+        <h2 class="section-title">Built for Customers and Garages</h2>
+
+        <div class="roles-grid">
+            <div class="role-card">
+                <h3>For Customers</h3>
+                <ul>
+                    <li>Search for compatible parts</li>
+                    <li>Compare garage listings</li>
+                    <li>Place orders quickly</li>
+                </ul>
+            </div>
+
+            <div class="role-card">
+                <h3>For Garages</h3>
+                <ul>
+                    <li>Manage inventory</li>
+                    <li>Set prices and quantity</li>
+                    <li>Receive and process orders</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- =========================
+     Call To Action
+========================== -->
+{%if not current_user.is_authenticated %}
+<section class="cta-section">
+    <div class="container cta-box">
+        <h2>Ready to start?</h2>
+        <p>Create an account and begin using the marketplace.</p>
+
+        <div class="hero-buttons">
+            <a href="{{ url_for('auth.register') }}" class="btn btn-primary">Register</a>
+            <a href="{{ url_for('auth.login') }}" class="btn btn-secondary">Login</a>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% endblock %}

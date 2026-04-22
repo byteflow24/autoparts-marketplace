@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Garage Inventory | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+    <div class="container">
+        <div class="inventory-header">
+            <div>
+                <h1>Garage Inventory</h1>
+                <p>View and manage the parts currently listed by your garage.</p>
+            </div>
+
+            <div class="inventory-actions">
+                <a href="{{ url_for('garage.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+                <a href="{{ url_for('parts.add_part_page') }}" class="btn btn-primary">Add Part</a>
+            </div>
+        </div>
+
+        {% if parts %}
+            <div class="inventory-table-wrapper">
+                <table class="inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Part Name</th>
+                            <th>Part Number</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Year Range</th>
+                            <th>Delivery</th>
+                            <th>Installation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in parts %}
+                            <tr>
+                                <td>{{ item.part.name }}</td>
+                                <td>{{ item.part.part_number or "—" }}</td>
+                                <td>QAR {{ item.price }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>
+                                    {% if item.from_year and item.to_year %}
+                                        {{ item.from_year }} - {{ item.to_year }}
+                                    {% elif item.from_year %}
+                                        From {{ item.from_year }}
+                                    {% elif item.to_year %}
+                                        Up to {{ item.to_year }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.delivery_available %}
+                                        Yes
+                                    {% else %}
+                                        No
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.installation_available %}
+                                        Yes
+                                    {% else %}
+                                        No
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.pickup_available %}
+                                        Yes
+                                    {% else %}
+                                        No
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state-card">
+                <h2>No parts added yet</h2>
+                <p>Your inventory is empty right now. Start by adding your first part.</p>
+                <a href="{{ url_for('parts.add_part_page') }}" class="btn btn-primary">Add First Part</a>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

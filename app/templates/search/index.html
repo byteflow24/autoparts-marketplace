@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}Search Parts | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="search-section">
+    <div class="container">
+        <div class="search-header">
+            <h1>Search Auto Parts</h1>
+            <p>Find parts by part number or use filters to compare garage listings.</p>
+        </div>
+
+        <div class="search-card">
+            <form method="GET" action="{{ url_for('search.search_page') }}" class="search-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Part Number</label>
+                        <input
+                            type="text"
+                            name="part_number"
+                            class="form-input"
+                            placeholder="Example: BP-1234"
+                            value="{{ request.args.get('part_number', '') }}"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Category</label>
+                        <input
+                            type="text"
+                            name="category"
+                            class="form-input"
+                            placeholder="Example: Brakes"
+                            value="{{ request.args.get('category', '') }}"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Car Make</label>
+                        <select name="car_make_id" class="form-input">
+                            <option value="">Select make</option>
+                            {% for make in car_makes %}
+                                <option value="{{ make.id }}"
+                                    {% if request.args.get('car_make_id') == make.id|string %}selected{% endif %}>
+                                    {{ make.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Car Model</label>
+                        <select name="car_model_id" class="form-input">
+                            <option value="">Select model</option>
+                            {% for model in car_models %}
+                                <option value="{{ model.id }}"
+                                    {% if request.args.get('car_model_id') == model.id|string %}selected{% endif %}>
+                                    {{ model.make.name }} - {{ model.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Year</label>
+                        <input
+                            type="number"
+                            name="year"
+                            class="form-input"
+                            placeholder="Example: 2020"
+                            value="{{ request.args.get('year', '') }}"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Min Price</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="min_price"
+                            class="form-input"
+                            placeholder="0.00"
+                            value="{{ request.args.get('min_price', '') }}"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Max Price</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="max_price"
+                            class="form-input"
+                            placeholder="500.00"
+                            value="{{ request.args.get('max_price', '') }}"
+                        >
+                    </div>
+                </div>
+
+                <div class="search-actions">
+                    <button type="submit" class="btn btn-primary">Search</button>
+                    <a href="{{ url_for('search.search_page') }}" class="btn btn-secondary">Reset</a>
+                </div>
+            </form>
+        </div>
+
+        {% if results %}
+            <div class="results-list">
+                {% for item in results %}
+                    <div class="result-card">
+                        <div class="result-top">
+                            <div>
+                                <h2>{{ item.part.name }}</h2>
+                                <p class="result-subtitle">
+                                    Part Number: {{ item.part.part_number or "—" }}
+                                </p>
+                            </div>
+
+                            <div class="result-price">
+                                QAR {{ item.price }}
+                            </div>
+                        </div>
+
+                        <div class="result-grid">
+                            <p><strong>Garage:</strong> {{ item.garage.garage_name }}</p>
+                            <p><strong>Quantity:</strong> {{ item.quantity }}</p>
+                            <p><strong>Brand:</strong> {{ item.part.brand or "—" }}</p>
+                            <p><strong>Category:</strong> {{ item.part.category or "—" }}</p>
+                            <p>
+                                <strong>Year Range:</strong>
+                                {% if item.from_year and item.to_year %}
+                                    {{ item.from_year }} - {{ item.to_year }}
+                                {% elif item.from_year %}
+                                    From {{ item.from_year }}
+                                {% elif item.to_year %}
+                                    Up to {{ item.to_year }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </p>
+                            <p><strong>Delivery:</strong> {{ "Yes" if item.delivery_available else "No" }}</p>
+                            <p><strong>Installation:</strong> {{ "Yes" if item.installation_available else "No" }}</p>
+                            <p><strong>Pickup:</strong> {{ "Yes" if item.pickup_available else "No" }}</p>
+                            <p>
+                                <strong>Car Model:</strong>
+                                {{ item.car_model.make.name }} - {{ item.car_model.name }}
+                            </p>
+                        </div>
+
+                        <form method="POST" action="{{ url_for('orders.add_to_cart_page') }}" class="cart-form">
+                            <input type="hidden" name="garage_part_id" value="{{ item.id }}">
+                            <input type="hidden" name="garage_id" value="{{ item.garage.id }}">
+                            <input type="hidden" name="part_name" value="{{ item.part.name }}">
+                            <input type="hidden" name="part_number" value="{{ item.part.part_number or '' }}">
+                            <input type="hidden" name="garage_name" value="{{ item.garage.garage_name }}">
+                            <input type="hidden" name="price" value="{{ item.price }}">
+
+                            <div class="purchase-box">
+                                <div class="purchase-row">
+                                    <label class="form-label">Quantity</label>
+                                    <input
+                                        type="number"
+                                        name="quantity"
+                                        class="form-input"
+                                        min="1"
+                                        max="{{ item.quantity }}"
+                                        value="1"
+                                        required
+                                    >
+                                </div>
+
+                                <div class="purchase-row">
+                                    <label class="form-label">Service Option</label>
+
+                                    <div class="service-options">
+                                        {% if item.delivery_available %}
+                                            <label>
+                                                <input type="radio" name="service_option" value="delivery" checked>
+                                                Delivery
+                                            </label>
+                                        {% endif %}
+
+                                        {% if item.installation_available %}
+                                            <label>
+                                                <input type="radio" name="service_option" value="installation">
+                                                Installation
+                                            </label>
+                                        {% endif %}
+
+                                        {% if item.pickup_available %}
+                                            <label>
+                                                <input type="radio" name="service_option" value="pickup">
+                                                Pickup
+                                            </label>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class="result-actions">
+                                    <button type="submit" class="btn btn-primary">Add to Cart</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        {% elif request.args %}
+            <div class="empty-state-card">
+                <h2>No results found</h2>
+                <p>Try adjusting the filters or searching with another part number.</p>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

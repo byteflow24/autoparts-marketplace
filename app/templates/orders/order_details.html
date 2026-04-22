@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Order Details | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+    <div class="container">
+        <div class="inventory-header">
+            <div>
+                <h1>Order #{{ order.id }}</h1>
+                <p>Garage: {{ order.garage.garage_name }}</p>
+            </div>
+
+            <div class="inventory-actions">
+                <a href="{{ url_for('orders.user_orders_page') }}" class="btn btn-secondary">Back to Orders</a>
+            </div>
+        </div>
+
+        <div class="garage-profile-card">
+            <div class="result-grid">
+                <p><strong>Status:</strong> {{ order.status }}</p>
+                <p><strong>Total Price:</strong> QAR {{ order.total_price or 0 }}</p>
+                <p><strong>Items Count:</strong> {{ order.items|length }}</p>
+            </div>
+        </div>
+
+        {% if order.items %}
+            <div class="inventory-table-wrapper">
+                <table class="inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Part</th>
+                            <th>Part Number</th>
+                            <th>Service Option</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in order.items %}
+                            <tr>
+                                <td>{{ item.garage_part.part.name }}</td>
+                                <td>{{ item.garage_part.part.part_number or "—" }}</td>
+                                <td>{{ item.service_option|capitalize }}</td>
+                                <td>QAR {{ item.price }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>QAR {{ (item.price * item.quantity)|round(2) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

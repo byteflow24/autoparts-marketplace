@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AutoParts Marketplace{% endblock %}</title>
+
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+
+    <!-- =========================
+         Navbar
+    ========================== -->
+    <header class="site-header">
+        <nav class="navbar container">
+            <a href="{{ url_for('main.home') }}" class="logo">AutoParts</a>
+
+            <ul class="nav-links">
+                <li><a href="{{ url_for('main.home') }}">Home</a></li>
+                <li><a href="{{ url_for('search.search_page') }}">Search Parts</a></li>
+                <li><a href="{{ url_for('orders.view_cart') }}">Cart</a></li>
+                {% if current_user.is_authenticated %}
+                    {% if current_user.role == "garage" %}
+                        <li><a href="{{ url_for('garage.dashboard')}}">Garage Dashboard</a></li>
+                    {% endif %}
+                    <li><a href="{{ url_for('auth.logout') }}">Logout</a></li>
+                {% else %}
+                    <li><a href="{{ url_for('auth.login') }}" class="btn btn-secondary">Login</a></li>
+                    <li><a href="{{ url_for('auth.register') }}" class="btn btn-primary">Register</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+
+    <!-- =========================
+         Flash Messages
+    ========================== -->
+    <main class="page-content">
+        <div class="container">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-wrapper">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- =========================
+         Footer
+    ========================== -->
+    <footer class="site-footer">
+        <div class="container footer-content">
+            <p>&copy; 2026 AutoParts Marketplace. All rights reserved.</p>
+        </div>
+    </footer>
+
+</body>
+</html>

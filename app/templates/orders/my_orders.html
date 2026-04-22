@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}My Orders | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+    <div class="container">
+        <div class="inventory-header">
+            <div>
+                <h1>My Orders</h1>
+                <p>Track the orders you placed from different garages.</p>
+            </div>
+        </div>
+
+        {% if orders %}
+            <div class="results-list">
+                {% for order in orders %}
+                    <div class="result-card">
+                        <div class="result-top">
+                            <div>
+                                <h2>Order #{{ order.id }}</h2>
+                                <p class="result-subtitle">
+                                    Garage: {{ order.garage.garage_name }}
+                                </p>
+                            </div>
+
+                            <div class="result-price">
+                                QAR {{ order.total_price or 0 }}
+                            </div>
+                        </div>
+
+                        <div class="result-grid">
+                            <p><strong>Status:</strong> {{ order.status }}</p>
+                            <p><strong>Items:</strong> {{ order.order_items|length }}</p>
+                        </div>
+
+                        <div class="result-actions">
+                            <a href="{{ url_for('orders.order_details_page', order_id=order.id) }}" class="btn btn-primary">
+                                View Details
+                            </a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state-card">
+                <h2>No orders yet</h2>
+                <p>You have not placed any orders yet.</p>
+                <a href="{{ url_for('search.search_page') }}" class="btn btn-primary">Search Parts</a>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

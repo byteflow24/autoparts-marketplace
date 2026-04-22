@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}My Cart | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+    <div class="container">
+        <div class="inventory-header">
+            <div>
+                <h1>My Cart</h1>
+                <p>Review selected parts before checkout.</p>
+            </div>
+
+            <div class="inventory-actions">
+                <a href="{{ url_for('search.search_page') }}" class="btn btn-secondary">Continue Shopping</a>
+
+                {% if cart %}
+                    <form method="POST" action="{{ url_for('orders.clear_cart') }}">
+                        <button type="submit" class="btn btn-secondary">Clear Cart</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if cart %}
+            <div class="inventory-table-wrapper">
+                <table class="inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Part</th>
+                            <th>Garage</th>
+                            <th>Part Number</th>
+                            <th>Service</th>
+                            <th>Price</th>
+                            <th>Quantity</th>
+                            <th>Subtotal</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in cart %}
+                            <tr>
+                                <td>{{ item.part_name }}</td>
+                                <td>{{ item.garage_name }}</td>
+                                <td>{{ item.part_number or "—" }}</td>
+                                <td>{{ item.service_option|capitalize }}</td>
+                                <td>QAR {{ item.price }}</td>
+                                <td>{{ item.quantity }}</td>
+                                <td>QAR {{ (item.price * item.quantity)|round(2) }}</td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('orders.remove_cart_item', index=loop.index0) }}">
+                                        <button type="submit" class="btn btn-secondary">Remove</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="cart-summary-card">
+                <h2>Total: QAR {{ total }}</h2>
+                <form method="POST" action="{{ url_for('orders.checkout') }}">
+                    <button type="submit" class="btn btn-primary">Proceed to Checkout</button>
+                </form>
+            </div>
+        {% else %}
+            <div class="empty-state-card">
+                <h2>Your cart is empty</h2>
+                <p>Search for parts and add items to your cart.</p>
+                <a href="{{ url_for('search.search_page') }}" class="btn btn-primary">Search Parts</a>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
