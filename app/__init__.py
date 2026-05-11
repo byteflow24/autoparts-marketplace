@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
+import os
 
 """
 App Factory
@@ -25,6 +26,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object('config.Config')
 
+    # Ensure instance folder exists (needed for SQLite DB path).
+    os.makedirs(app.instance_path, exist_ok=True)
+
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
@@ -38,6 +42,8 @@ def create_app():
 
     with app.app_context():
         from app.models import user, garage, part, order, car
+        from app.cli import register_cli
+        register_cli(app)
         # Import Blueprints later
         from app.main.routes import main_bp
         from app.auth.routes import auth_bp

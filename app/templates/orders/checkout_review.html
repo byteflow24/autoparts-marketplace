@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Checkout | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+  <div class="container">
+    <div class="inventory-header">
+      <div>
+        <h1>Checkout</h1>
+        <p>Review your items before choosing payment.</p>
+      </div>
+      <div class="inventory-actions">
+        <a href="{{ url_for('orders.view_cart') }}" class="btn btn-secondary">Back to Cart</a>
+      </div>
+    </div>
+
+    <div class="inventory-table-wrapper">
+      <table class="inventory-table">
+        <thead>
+          <tr>
+            <th>Part</th>
+            <th>Garage</th>
+            <th>Service</th>
+            <th>Price</th>
+            <th>Quantity</th>
+            <th>Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in cart %}
+            <tr>
+              <td>{{ item.part_name }}</td>
+              <td>{{ item.garage_name }}</td>
+              <td>{{ item.service_option|capitalize }}</td>
+              <td>QAR {{ item.price }}</td>
+              <td>{{ item.quantity }}</td>
+              <td>QAR {{ (item.price * item.quantity)|round(2) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cart-summary-card">
+      <h2>Total: QAR {{ total }}</h2>
+      <a href="{{ url_for('orders.payment_page') }}" class="btn btn-primary">Continue to Payment</a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

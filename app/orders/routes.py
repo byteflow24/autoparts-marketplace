@@ -113,6 +113,161 @@ def view_cart():
     return render_template("orders/cart.html", cart=cart, total=total)
 
 # ---------------------------------------------------
+# ✅ Checkout review page (no DB writes)
+# ---------------------------------------------------
+@orders_bp.route("/checkout", methods=["GET"])
+@login_required
+def checkout_review_page():
+    cart = session.get("cart", [])
+    if not cart:
+        flash("Your cart is empty.", "warning")
+        return redirect(url_for("orders.view_cart"))
+
+    # Validate cart against current DB state (stock + service availability)
+    for cart_item in cart:
+        garage_part = GaragePart.query.get(cart_item["garage_part_id"])
+        if not garage_part:
+            flash(f"Part no longer exists: {cart_item.get('part_name', 'Unknown')}", "danger")
+            return redirect(url_for("orders.view_cart"))
+
+        if cart_item["quantity"] > garage_part.quantity:
+            flash(
+                f"Not enough stock for {cart_item.get('part_name', 'this item')}. Available: {garage_part.quantity}",
+                "danger",
+            )
+            return redirect(url_for("orders.view_cart"))
+
+        if cart_item["service_option"] == "pickup" and not garage_part.pickup_available:
+            flash(f"Pickup is not available for {cart_item.get('part_name', 'this item')}", "danger")
+            return redirect(url_for("orders.view_cart"))
+
+        if cart_item["service_option"] == "delivery" and not garage_part.delivery_available:
+            flash(f"Delivery is not available for {cart_item.get('part_name', 'this item')}", "danger")
+            return redirect(url_for("orders.view_cart"))
+
+        if cart_item["service_option"] == "installation" and not garage_part.installation_available:
+            flash(f"Installation is not available for {cart_item.get('part_name', 'this item')}", "danger")
+            return redirect(url_for("orders.view_cart"))
+
+    # Compute totals and group for display
+    grouped_items = defaultdict(list)
+    for item in cart:
+        grouped_items[item["garage_id"]].append(item)
+
+    grand_total = round(sum(item["price"] * item["quantity"] for item in cart), 2)
+    return render_template(
+        "orders/checkout_review.html",
+        cart=cart,
+        grouped_items=grouped_items,
+        total=grand_total,
+    )
+
+# ---------------------------------------------------
+# ✅ Payment method page (no DB writes)
+# ---------------------------------------------------
+@orders_bp.route("/payment", methods=["GET", "POST"])
+@login_required
+def payment_page():
+    cart = session.get("cart", [])
+    if not cart:
+        flash("Your cart is empty.", "warning")
+        return redirect(url_for("orders.view_cart"))
+
+    if request.method == "POST":
+        payment_method = request.form.get("payment_method")
+        if payment_method not in {"cod"}:
+            flash("Please select a valid payment method.", "danger")
+            return redirect(url_for("orders.payment_page"))
+
+        session["checkout_payment_method"] = payment_method
+        return redirect(url_for("orders.confirm_order_page"))
+
+    total = round(sum(item["price"] * item["quantity"] for item in cart), 2)
+    selected_method = session.get("checkout_payment_method", "cod")
+    return render_template("orders/payment.html", total=total, selected_method=selected_method)
+
+# ---------------------------------------------------
+# ✅ Confirm + place order (DB writes happen here)
+# ---------------------------------------------------
+@orders_bp.route("/confirm", methods=["GET", "POST"])
+@login_required
+def confirm_order_page():
+    cart = session.get("cart", [])
+    if not cart:
+        flash("Your cart is empty.", "warning")
+        return redirect(url_for("orders.view_cart"))
+
+    payment_method = session.get("checkout_payment_method")
+    if payment_method not in {"cod"}:
+        flash("Please select a payment method before placing the order.", "warning")
+        return redirect(url_for("orders.payment_page"))
+
+    if request.method == "GET":
+        total = round(sum(item["price"] * item["quantity"] for item in cart), 2)
+        return render_template("orders/confirm.html", cart=cart, total=total, payment_method=payment_method)
+
+    # POST: place orders (one per garage)
+    grouped_items = defaultdict(list)
+    for item in cart:
+        grouped_items[item["garage_id"]].append(item)
+
+    created_orders = []
+
+    try:
+        for garage_id, items in grouped_items.items():
+            order = create_order(
+                user_id=current_user.id,
+                garage_id=garage_id
+            )
+
+            for cart_item in items:
+                garage_part = GaragePart.query.get(cart_item["garage_part_id"])
+                if not garage_part:
+                    raise ValueError(f"Part no longer exists: {cart_item['part_name']}")
+
+                if cart_item["quantity"] > garage_part.quantity:
+                    raise ValueError(
+                        f"Not enough stock for {cart_item['part_name']}. Available: {garage_part.quantity}"
+                    )
+
+                if cart_item["service_option"] == "pickup" and not garage_part.pickup_available:
+                    raise ValueError(f"Pickup is not available for {cart_item['part_name']}")
+
+                if cart_item["service_option"] == "delivery" and not garage_part.delivery_available:
+                    raise ValueError(f"Delivery is not available for {cart_item['part_name']}")
+
+                if cart_item["service_option"] == "installation" and not garage_part.installation_available:
+                    raise ValueError(f"Installation is not available for {cart_item['part_name']}")
+
+                add_item_to_order(
+                    order_id=order.id,
+                    garage_part_id=cart_item["garage_part_id"],
+                    quantity=cart_item["quantity"],
+                    service_option=cart_item["service_option"],
+                )
+
+            calculate_order_total(order.id)
+            created_orders.append(order.id)
+
+        session["cart"] = []
+        session.pop("checkout_payment_method", None)
+
+        flash(
+            f"Order placed successfully ({'Cash on Delivery' if payment_method == 'cod' else payment_method}). "
+            f"Order IDs: {', '.join(map(str, created_orders))}",
+            "success",
+        )
+        return redirect(url_for("orders.user_orders_page"))
+
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("orders.view_cart"))
+
+    except Exception as e:
+        flash(f"Something went wrong while placing the order. {e}", "danger")
+        return redirect(url_for("orders.view_cart"))
+
+# ---------------------------------------------------
 # ✅ Remove cart item
 # ---------------------------------------------------
 @orders_bp.route("/cart/remove/<int:index>", methods=["POST"])
@@ -147,78 +302,8 @@ def clear_cart():
 @orders_bp.route("/checkout", methods=["POST"])
 @login_required
 def checkout():
-    cart = session.get("cart", [])
-
-    if not cart:
-        flash("Your cart is empty.", "warning")
-        return redirect(url_for("orders.view_cart"))
-
-    # Group cart items by garage_id
-    grouped_items = defaultdict(list)
-    for item in cart:
-        grouped_items[item["garage_id"]].append(item)
-
-    created_orders = []
-
-    try:
-        for garage_id, items in grouped_items.items():
-            # Step 1: create one order for this garage
-            order = create_order(
-                user_id=current_user.id,
-                garage_id=garage_id
-            )
-
-            # Step 2: add all its items
-            for cart_item in items:
-                garage_part = GaragePart.query.get(cart_item["garage_part_id"])
-
-                if not garage_part:
-                    raise ValueError(f"Part no longer exists: {cart_item['part_name']}")
-
-                # Recheck stock
-                if cart_item["quantity"] > garage_part.quantity:
-                    raise ValueError(
-                        f"Not enough stock for {cart_item['part_name']}. Available: {garage_part.quantity}"
-                    )
-
-                # Recheck selected service option
-                if cart_item["service_option"] == "pickup" and not garage_part.pickup_available:
-                    raise ValueError(f"Pickup is not available for {cart_item['part_name']}")
-
-                if cart_item["service_option"] == "delivery" and not garage_part.delivery_available:
-                    raise ValueError(f"Delivery is not available for {cart_item['part_name']}")
-
-                if cart_item["service_option"] == "installation" and not garage_part.installation_available:
-                    raise ValueError(f"Installation is not available for {cart_item['part_name']}")
-
-                item = add_item_to_order(
-                    order_id=order.id,
-                    garage_part_id=cart_item["garage_part_id"],
-                    quantity=cart_item["quantity"],
-                    service_option=cart_item["service_option"]
-                )
-
-                # Save selected service option
-                # item.service_option = cart_item["service_option"]
-                # db.session.commit()
-
-            # Step 3: calculate total for this order
-            calculate_order_total(order.id)
-            created_orders.append(order.id)
-
-        # Step 4: clear cart after successful checkout
-        session["cart"] = []
-
-        flash("Checkout completed successfully.", "success")
-        return redirect(url_for("orders.user_orders_page"))
-
-    except ValueError as e:
-        flash(str(e), "danger")
-        return redirect(url_for("orders.view_cart"))
-
-    except Exception as e:
-        flash(f"Something went wrong during checkout. {e}", "danger")
-        return redirect(url_for("orders.view_cart"))
+    # Backwards compatible: if something still POSTs to /checkout, just send user to review
+    return redirect(url_for("orders.checkout_review_page"))
 
 # ---------------------------------------------------
 # ✅ Customer Orders Page
@@ -242,6 +327,7 @@ def order_details_page(order_id):
         if order.user_id != current_user.id:
             flash("Access denied.", "danger")
             return redirect(url_for("main.home"))
+        
 
         return render_template("orders/order_details.html", order=order)
 

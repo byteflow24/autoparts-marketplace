@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm Order | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+  <div class="container">
+    <div class="inventory-header">
+      <div>
+        <h1>Confirm Order</h1>
+        <p>Confirm your order and place it.</p>
+      </div>
+      <div class="inventory-actions">
+        <a href="{{ url_for('orders.payment_page') }}" class="btn btn-secondary">Back</a>
+      </div>
+    </div>
+
+    <div class="garage-profile-card">
+      <div class="result-grid">
+        <p><strong>Payment Method:</strong> {% if payment_method == "cod" %}Cash on Delivery{% else %}{{ payment_method }}{% endif %}</p>
+        <p><strong>Total:</strong> QAR {{ total }}</p>
+        <p><strong>Items:</strong> {{ cart|length }}</p>
+      </div>
+    </div>
+
+    <div class="garage-profile-card">
+      <form method="POST" action="{{ url_for('orders.confirm_order_page') }}">
+        <button type="submit" class="btn btn-primary">Place Order</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
+

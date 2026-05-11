@@ -60,9 +60,7 @@
 
             <div class="cart-summary-card">
                 <h2>Total: QAR {{ total }}</h2>
-                <form method="POST" action="{{ url_for('orders.checkout') }}">
-                    <button type="submit" class="btn btn-primary">Proceed to Checkout</button>
-                </form>
+                <a href="{{ url_for('orders.checkout_review_page') }}" class="btn btn-primary">Proceed to Checkout</a>
             </div>
         {% else %}
             <div class="empty-state-card">

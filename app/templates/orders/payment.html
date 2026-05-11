@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Payment | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+  <div class="container">
+    <div class="inventory-header">
+      <div>
+        <h1>Payment</h1>
+        <p>Select a payment method.</p>
+      </div>
+      <div class="inventory-actions">
+        <a href="{{ url_for('orders.checkout_review_page') }}" class="btn btn-secondary">Back</a>
+      </div>
+    </div>
+
+    <div class="garage-profile-card">
+      <div class="result-grid">
+        <p><strong>Order Total:</strong> QAR {{ total }}</p>
+      </div>
+    </div>
+
+    <div class="garage-profile-card">
+      <form method="POST" action="{{ url_for('orders.payment_page') }}">
+        <div class="result-grid" style="gap: 12px;">
+          <label>
+            <input type="radio" name="payment_method" value="cod" {% if selected_method == "cod" %}checked{% endif %}>
+            Cash on Delivery (COD)
+          </label>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <button type="submit" class="btn btn-primary">Continue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
