@@ -18,15 +18,18 @@ depends_on = None
 
 
 def upgrade():
+    # ✅ Order timestamps for seller prioritization
     with op.batch_alter_table("orders", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=False)
         )
 
+    # ✅ Inventory enhancements: profit + availability control
     with op.batch_alter_table("garage_parts", schema=None) as batch_op:
         batch_op.add_column(sa.Column("cost_price", sa.DECIMAL(10, 2), nullable=True))
         batch_op.add_column(sa.Column("is_active", sa.Boolean(), server_default=sa.true(), nullable=False))
 
+    # ✅ Reserved for upcoming external parts APIs (optional now)
     with op.batch_alter_table("parts", schema=None) as batch_op:
         batch_op.add_column(sa.Column("source", sa.String(length=50), nullable=True))
         batch_op.add_column(sa.Column("external_id", sa.String(length=100), nullable=True))

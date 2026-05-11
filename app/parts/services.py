@@ -92,6 +92,7 @@ def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_
         return existing
     
     # ✅ Create new GaragePart
+    # Note: cost_price is optional now (used later for profit reporting).
     garage_part = GaragePart(
         garage_id=garage_id,
         part_id=part_id,
@@ -133,10 +134,11 @@ def update_part( garage_part_id, price=None, quantity=None,
     if not garage_part:
         raise ValueError("Garage part not found")
 
-    # Update fields only if provided
+    # Update fields only if provided (keeps partial updates safe)
     if price is not None:
         garage_part.price = price
 
+    # ✅ Profit tracking support
     if cost_price is not None:
         garage_part.cost_price = cost_price
 
@@ -158,6 +160,7 @@ def update_part( garage_part_id, price=None, quantity=None,
     if pickup_available is not None:
         garage_part.pickup_available = pickup_available
 
+    # ✅ Seller can hide a listing without deleting it
     if is_active is not None:
         garage_part.is_active = is_active
 
@@ -219,6 +222,10 @@ def edit_garage_part(garage_part_id, garage_id, **kwargs):
     return garage_part
 
 
+# ---------------------------------------------------
+# ✅ Toggle Listing Active/Inactive
+# ---------------------------------------------------
+# A safer alternative to delete: allows garage to hide a part temporarily.
 def toggle_garage_part_active(garage_part_id, garage_id):
     garage_part = GaragePart.query.get(garage_part_id)
 

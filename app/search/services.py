@@ -26,6 +26,7 @@ def search_by_part_number(part_number):
     Returns all garage listings that have this part.
     """
 
+    # ✅ Only show sellable listings (active + in stock)
     results = (
         db.session.query(GaragePart)
         .join(Part)
@@ -51,6 +52,7 @@ def search_parts(
     Advanced search with filters.
     """
 
+    # ✅ Only show sellable listings (active + in stock)
     query = (
         db.session.query(GaragePart)
         .join(Part)

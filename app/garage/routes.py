@@ -133,6 +133,8 @@ def inventory():
         flash("Garage profile not found.", "warning")
         return redirect(url_for("main.home"))
 
+    # ✅ Inventory filters (simple usability upgrade)
+    # Helps garages manage large inventories without loading everything blindly.
     parts = get_garage_parts(
         current_user.garage.id,
         category=request.args.get("category") or None,
@@ -184,6 +186,11 @@ def edit_profile():
     return render_template("garage/edit_profile.html", garage=garage)
 
 
+# ---------------------------------------------------
+# ✅ Garage Orders Queue (Seller Side)
+# ---------------------------------------------------
+# Shows incoming orders for the logged-in garage
+# and allows quick status updates from the browser.
 @garage_bp.route("/orders", methods=["GET"])
 @login_required
 def orders_queue():
@@ -196,6 +203,9 @@ def orders_queue():
         return redirect(url_for("main.home"))
 
     orders = get_garage_orders(current_user.garage.id)
+
+    # ✅ Sort: pending first, then older first
+    # created_at might be NULL for legacy rows before migration.
     orders = sorted(
         orders,
         key=lambda o: (
@@ -207,6 +217,11 @@ def orders_queue():
     return render_template("garage/orders.html", orders=orders)
 
 
+# ---------------------------------------------------
+# ✅ Garage Order Details (Seller Side)
+# ---------------------------------------------------
+# Separate from customer order page:
+# garage users can view only orders that belong to their garage.
 @garage_bp.route("/orders/<int:order_id>", methods=["GET"])
 @login_required
 def order_detail(order_id):
@@ -230,6 +245,10 @@ def order_detail(order_id):
         return redirect(url_for("garage.orders_queue"))
 
 
+# ---------------------------------------------------
+# ✅ Update Order Status (Garage HTML)
+# ---------------------------------------------------
+# HTML form handler that updates order status and redirects back.
 @garage_bp.route("/orders/<int:order_id>/status", methods=["POST"])
 @login_required
 def update_order_status_page(order_id):

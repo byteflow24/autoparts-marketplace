@@ -163,6 +163,8 @@ def get_garage_dashboard(garage_id):
 
     total_units_sold = sum(item.quantity for item in ordering_items)
     total_revenue = round(sum(float(item.price) * item.quantity for item in ordering_items), 2)
+
+    # ✅ Cost/profit support (requires cost_price on GaragePart)
     total_cost = 0.0
 
     sold_by_category = defaultdict(int)
@@ -191,6 +193,7 @@ def get_garage_dashboard(garage_id):
         top_selling_parts[key]["quantity_sold"] += item.quantity
         top_selling_parts[key]["revenue"] += float(item.price) * item.quantity
 
+        # ✅ Calculate cost only when cost_price exists
         if garage_part.cost_price is not None:
             total_cost += float(garage_part.cost_price) * item.quantity
 
@@ -200,6 +203,7 @@ def get_garage_dashboard(garage_id):
         reverse=True
     )[:5]
 
+    # ✅ Profit is optional until garage fills cost_price fields
     estimated_profit = None
     if total_cost > 0:
         estimated_profit = round(total_revenue - total_cost, 2)
@@ -248,12 +252,15 @@ def get_garage_parts(garage_id, category=None, search=None, low_stock_only=False
 
     query = GaragePart.query.filter(GaragePart.garage_id == garage_id)
 
+    # ✅ Default behavior: show only active listings
     if not show_inactive:
         query = query.filter(GaragePart.is_active.is_(True))
 
+    # ✅ Low stock helper for quick restock decisions
     if low_stock_only:
         query = query.filter(GaragePart.quantity < 10)
 
+    # ✅ Search by name / part number
     if search:
         query = query.join(Part).filter(
             db.or_(
@@ -262,6 +269,7 @@ def get_garage_parts(garage_id, category=None, search=None, low_stock_only=False
             )
         )
 
+    # ✅ Filter by category
     if category:
         query = query.join(Part).filter(Part.category.ilike(f"%{category}%"))
 

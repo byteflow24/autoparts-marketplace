@@ -222,6 +222,7 @@ def toggle_garage_part_active_route(garage_part_id):
         return redirect(url_for("main.home"))
 
     try:
+        # ✅ Hide/show listing without deleting it
         toggle_garage_part_active(
             garage_part_id=garage_part_id,
             garage_id=current_user.garage.id
