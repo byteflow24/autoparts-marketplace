@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify, render_template
 from app.search.services import search_by_part_number, search_parts, format_search_results
 from app.models.car import CarMake, CarModel
+from datetime import datetime
 
 """
 Search Routes
@@ -86,6 +87,9 @@ def search_page():
     min_price = request.args.get("min_price", type=float)
     max_price = request.args.get("max_price", type=float)
 
+    current_year = datetime.now().year
+    years = list(range(current_year, 1899, -1))
+
     results = []
 
     # Priority: search by part number first
@@ -108,5 +112,6 @@ def search_page():
         "search/index.html",
         results=results,
         car_makes=car_makes,
-        car_models=car_models
+        car_models=car_models,
+        years=years
     )

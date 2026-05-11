@@ -16,7 +16,14 @@
 
                 <div class="form-group">
                     {{ form.role.label(class="form-label") }}
-                    {{ form.role(class="form-input") }}
+                    <div class="radio-group">
+                        {% for subfield in form.role %}
+                        <label class="radio-option">
+                            {{ subfield() }}
+                            <span>{{ subfield.label.text }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
                     {% for error in form.role.errors %}
                         <small class="form-error">{{ error }}</small>
                     {% endfor %}

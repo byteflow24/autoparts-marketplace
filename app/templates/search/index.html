@@ -63,13 +63,16 @@
 
                     <div class="form-group">
                         <label class="form-label">Year</label>
-                        <input
-                            type="number"
-                            name="year"
-                            class="form-input"
-                            placeholder="Example: 2020"
-                            value="{{ request.args.get('year', '') }}"
-                        >
+                        <select name="year" class="form-input">
+                            <option value="">Select year</option>
+
+                            {% for y in years %}
+                                <option value="{{ y }}"
+                                    {% if request.args.get('year') == y|string %}selected{% endif %}>
+                                    {{ y }}
+                                </option>
+                            {% endfor %}
+                        </select>
                     </div>
 
                     <div class="form-group">
