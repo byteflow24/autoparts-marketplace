@@ -27,7 +27,15 @@ def search_by_part_number(part_number):
     """
 
     results = (
-        db.session.query(GaragePart).join(Part).join(Garage).filter(Part.part_number == part_number).all()
+        db.session.query(GaragePart)
+        .join(Part)
+        .join(Garage)
+        .filter(
+            Part.part_number == part_number,
+            GaragePart.is_active.is_(True),
+            GaragePart.quantity > 0
+        )
+        .all()
     )
 
     return results
@@ -43,7 +51,14 @@ def search_parts(
     Advanced search with filters.
     """
 
-    query = (db.session.query(GaragePart).join(Part).join(Garage).join(CarModel).join(CarMake))
+    query = (
+        db.session.query(GaragePart)
+        .join(Part)
+        .join(Garage)
+        .join(CarModel)
+        .join(CarMake)
+        .filter(GaragePart.is_active.is_(True), GaragePart.quantity > 0)
+    )
 
     # Car filters
     if car_make_id:

@@ -1,7 +1,15 @@
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash
 from flask_login import login_required, current_user
 from app.models.car import CarMake, CarModel
-from app.parts.services import create_part, add_part_to_garage, update_part, get_garage_inventory
+from app.parts.services import (
+    create_part,
+    add_part_to_garage,
+    update_part,
+    get_garage_inventory,
+    delete_garage_part,
+    edit_garage_part,
+    toggle_garage_part_active
+)
 
 """
 Parts Routes
@@ -57,6 +65,7 @@ def add_part_page():
                 part_id=part.id,
                 car_model_id=int(request.form.get("car_model_id")),
                 price=float(request.form.get("price")),
+                cost_price=float(request.form.get("cost_price")) if request.form.get("cost_price") else None,
                 quantity=int(request.form.get("quantity")),
                 from_year=int(request.form.get("from_year")) if request.form.get("from_year") else None,
                 to_year=int(request.form.get("to_year")) if request.form.get("to_year") else None,
@@ -180,3 +189,90 @@ def get_inventory_route(garage_id):
         "count": len(data),
         "inventory": data
     })
+
+# ---------------------------------------------------
+# ✅ Delete Part from Inventory
+# ---------------------------------------------------
+@parts_bp.route("/garage-part/<int:garage_part_id>/delete", methods=["POST"])
+@login_required
+def delete_garage_part_route(garage_part_id):
+    if current_user.role != "garage":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    try:
+        delete_garage_part(
+            garage_part_id=garage_part_id,
+            garage_id=current_user.garage.id
+        )
+
+        flash("Part removed from inventory.", "success")
+
+    except ValueError as e:
+        flash(str(e), "danger")
+
+    return redirect(url_for("garage.inventory"))
+
+
+@parts_bp.route("/garage-part/<int:garage_part_id>/toggle-active", methods=["POST"])
+@login_required
+def toggle_garage_part_active_route(garage_part_id):
+    if current_user.role != "garage":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    try:
+        toggle_garage_part_active(
+            garage_part_id=garage_part_id,
+            garage_id=current_user.garage.id
+        )
+        flash("Listing status updated.", "success")
+    except ValueError as e:
+        flash(str(e), "danger")
+
+    return redirect(url_for("garage.inventory"))
+
+# ---------------------------------------------------
+# ✅ Edit Part in Inventory Page
+# ---------------------------------------------------
+@parts_bp.route("/garage-part/<int:garage_part_id>/edit", methods=["GET", "POST"])
+@login_required
+def edit_garage_part_route(garage_part_id):
+    if current_user.role != "garage":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    garage_part = get_garage_inventory(current_user.garage.id)
+    garage_part = next((gp for gp in garage_part if gp.id == garage_part_id), None)
+
+    if not garage_part:
+        flash("Part not found in your inventory.", "warning")
+        return redirect(url_for("garage.inventory"))
+
+    if request.method == "POST":
+        try:
+            edit_garage_part(
+                garage_part_id=garage_part_id,
+                garage_id=current_user.garage.id,
+                price=float(request.form.get("price")),
+                cost_price=float(request.form.get("cost_price")) if request.form.get("cost_price") else None,
+                quantity=int(request.form.get("quantity")),
+                from_year=int(request.form.get("from_year")) if request.form.get("from_year") else None,
+                to_year=int(request.form.get("to_year")) if request.form.get("to_year") else None,
+                delivery_available=True if request.form.get("delivery_available") == "on" else False,
+                installation_available=True if request.form.get("installation_available") == "on" else False,
+                pickup_available=True if request.form.get("pickup_available") == "on" else False
+            )
+
+            flash("Part updated successfully.", "success")
+            return redirect(url_for("garage.inventory"))
+
+        except ValueError as e:
+            flash(str(e), "danger")
+        except Exception:
+            flash("Something went wrong while updating the part.", "danger")
+
+    return render_template(
+        "parts/edit_part.html",
+        garage_part=garage_part
+    )

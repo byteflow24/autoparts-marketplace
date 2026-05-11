@@ -23,24 +23,188 @@
 
         <div class="dashboard-grid">
             <div class="dashboard-card">
-                <h3>Total Parts</h3>
-                <p class="dashboard-number">{{ data.total_parts }}</p>
+                <h3>Inventory Listings</h3>
+                <p class="dashboard-number">{{ data.inventory_listings }}</p>
+                <small class="dashboard-note">Total inventory entries</small>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Total Units in Stock</h3>
+                <p class="dashboard-number">{{ data.total_units }}</p>
+                <small class="dashboard-note">Sum of all quantities</small>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Categories Covered</h3>
+                <p class="dashboard-number">{{ data.categories_count }}</p>
+                <small class="dashboard-note">Unique part categories</small>
             </div>
 
             <div class="dashboard-card">
                 <h3>Low Stock Alerts</h3>
-                <p class="dashboard-number">{{ data.low_stock_count }}</p>
+                <p class="dashboard-number {% if data.low_stock_count > 0 %}text-danger{% endif %}">{{ data.low_stock_count }}</p>
+                <small class="dashboard-note">Items below 10 units</small>
             </div>
 
             <div class="dashboard-card">
                 <h3>Total Inventory Value</h3>
                 <p class="dashboard-number">QAR {{ data.total_inventory_value }}</p>
+                <small class="dashboard-note">Based on price × quantity</small>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Total Orders</h3>
+                <p class="dashboard-number">{{ data.total_orders }}</p>
+                <small class="dashboard-note">All received orders</small>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Pending Orders</h3>
+                <p class="dashboard-number">{{ data.pending_orders }}</p>
+                <small class="dashboard-note">Orders waiting for action</small>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Units Sold</h3>
+                <p class="dashboard-number">{{ data.total_units_sold }}</p>
+                <small class="dashboard-note">Total sold pieces</small>
+            </div>
+
+            <div class="dashboard-card">
+                <h3>Total Revenue</h3>
+                <p class="dashboard-number">QAR {{ data.total_revenue }}</p>
+                <small class="dashboard-note">Based on completed/created orders</small>
+            </div>
+        </div>
+
+        <div class="dashboard-details-grid">
+            <div class="dashboard-detail-card">
+                <h3>Stock by Category</h3>
+
+                {% if data.category_units %}
+                    <div class="category-list">
+                        {% for category, quantity in data.category_units.items() %}
+                            <div class="category-row">
+                                <span>{{ category }}</span>
+                                <strong>{{ quantity }} pieces</strong>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted-text">No categories added yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="dashboard-detail-card">
+                <h3>Low Stock Items</h3>
+
+                {% if data.low_stock_items %}
+                    <div class="low-stock-list">
+                        {% for item in data.low_stock_items %}
+                            <div class="low-stock-row">
+                                <div>
+                                    <strong>{{ item.part_name }}</strong>
+                                    <p>{{ item.category }} · {{ item.part_number or "No part number" }}</p>
+                                </div>
+                                <span class="stock-warning">{{ item.quantity }} left</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted-text">No low stock items right now.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="dashboard-details-grid">
+            <div class="dashboard-detail-card">
+                <h3>Sold by Category</h3>
+
+                {% if data.sold_by_category %}
+                    <div class="category-list">
+                        {% for category, quantity in data.sold_by_category.items() %}
+                            <div class="category-row">
+                                <span>{{ category }}</span>
+                                <strong>{{ quantity }} sold</strong>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted-text">No sales yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="dashboard-detail-card">
+                <h3>Top Selling Parts</h3>
+
+                {% if data.top_selling_parts %}
+                    <div class="low-stock-list">
+                        {% for item in data.top_selling_parts %}
+                            <div class="low-stock-row">
+                                <div>
+                                    <strong>{{ item.part_name }}</strong>
+                                    <p>{{ item.part_number or "No part number" }}</p>
+                                </div>
+                                <span class="stock-success">
+                                    {{ item.quantity_sold }} sold · QAR {{ item.revenue|round(2) }}
+                                </span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted-text">No top selling parts yet.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="dashboard-details-grid">
+            <div class="dashboard-detail-card">
+                <h3>Order Status Summary</h3>
+
+                <div class="category-list">
+                    <div class="category-row">
+                        <span>Pending</span>
+                        <strong>{{ data.pending_orders }}</strong>
+                    </div>
+
+                    <div class="category-row">
+                        <span>Confirmed</span>
+                        <strong>{{ data.confirmed_orders }}</strong>
+                    </div>
+
+                    <div class="category-row">
+                        <span>Completed</span>
+                        <strong>{{ data.completed_orders }}</strong>
+                    </div>
+
+                    <div class="category-row">
+                        <span>Cancelled</span>
+                        <strong>{{ data.cancelled_orders }}</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-detail-card">
+                <h3>Profit</h3>
+
+                {% if data.estimated_profit is not none %}
+                    <p class="dashboard-number">QAR {{ data.estimated_profit }}</p>
+                    <small class="dashboard-note">Estimated profit based on cost price × sold quantity</small>
+                {% else %}
+                    <p class="muted-text">
+                        Add cost price to inventory items to enable profit calculation.
+                    </p>
+                    <p class="dashboard-note">
+                        Formula: profit = revenue - cost
+                    </p>
+                {% endif %}
             </div>
         </div>
 
         <div class="dashboard-actions">
             <a href="{{ url_for('parts.add_part_page') }}" class="btn btn-primary">Add Part</a>
             <a href="{{ url_for('garage.inventory') }}" class="btn btn-secondary">View Inventory</a>
+            <a href="{{ url_for('garage.orders_queue') }}" class="btn btn-secondary">Manage Orders</a>
             <a href="{{ url_for('garage.edit_profile') }}" class="btn btn-secondary">Edit Profile</a>
         </div>
     </div>

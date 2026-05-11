@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Garage Orders | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+    <div class="container">
+        <div class="inventory-header">
+            <div>
+                <h1>Orders</h1>
+                <p>Manage incoming orders from customers.</p>
+            </div>
+
+            <div class="inventory-actions">
+                <a href="{{ url_for('garage.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+            </div>
+        </div>
+
+        {% if orders %}
+            <div class="inventory-table-wrapper">
+                <table class="inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Order #</th>
+                            <th>Created</th>
+                            <th>Customer</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Update</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                            <tr>
+                                <td>{{ order.id }}</td>
+                                <td>
+                                    {% if order.created_at %}
+                                        {{ order.created_at.strftime("%Y-%m-%d %H:%M") }}
+                                    {% else %}
+                                        —
+                                    {% endif %}
+                                </td>
+                                <td>{{ order.user.name or order.user.email }}</td>
+                                <td>QAR {{ order.total_price or 0 }}</td>
+                                <td><strong>{{ order.status }}</strong></td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('garage.update_order_status_page', order_id=order.id) }}" style="display:flex; gap:8px; align-items:center;">
+                                        <select name="status" class="form-input" style="max-width:200px;">
+                                            {% set statuses = ["pending", "confirmed", "completed", "cancelled"] %}
+                                            {% for s in statuses %}
+                                                <option value="{{ s }}" {% if order.status == s %}selected{% endif %}>{{ s }}</option>
+                                            {% endfor %}
+                                        </select>
+                                        <button type="submit" class="btn btn-secondary btn-sm">Save</button>
+                                    </form>
+                                </td>
+                                <td>
+                                    <a class="btn btn-primary btn-sm" href="{{ url_for('garage.order_detail', order_id=order.id) }}">View</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state-card">
+                <h2>No orders yet</h2>
+                <p>When customers place orders, they’ll show up here.</p>
+            </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+

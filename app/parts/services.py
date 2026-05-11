@@ -51,7 +51,8 @@ def create_part(part_number=None, name=None, brand=None, category=None):
 # ✅ Add Part to Garage Inventory
 # ---------------------------------------------------
 def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_year, to_year,
-                       delivery_available=False, installation_available=False, pickup_available=False):
+                       delivery_available=False, installation_available=False, pickup_available=False,
+                       cost_price=None, is_active=True):
     """
     Adds a part to a garage inventory (GaragePart).
 
@@ -96,9 +97,11 @@ def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_
         part_id=part_id,
         car_model_id=car_model_id,
         price=price,
+        cost_price=cost_price,
         quantity=quantity,
         from_year=from_year,
         to_year=to_year,
+        is_active=is_active,
         delivery_available=delivery_available,
         installation_available=installation_available,
         pickup_available=pickup_available
@@ -114,7 +117,8 @@ def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_
 # ---------------------------------------------------
 def update_part( garage_part_id, price=None, quantity=None,
                 from_year=None, to_year=None,
-                delivery_available=False, installation_available=False, pickup_available=False):
+                delivery_available=False, installation_available=False, pickup_available=False,
+                cost_price=None, is_active=None):
     """
     Update existing garage part.
 
@@ -133,6 +137,9 @@ def update_part( garage_part_id, price=None, quantity=None,
     if price is not None:
         garage_part.price = price
 
+    if cost_price is not None:
+        garage_part.cost_price = cost_price
+
     if quantity is not None:
         garage_part.quantity = quantity
 
@@ -150,6 +157,9 @@ def update_part( garage_part_id, price=None, quantity=None,
     
     if pickup_available is not None:
         garage_part.pickup_available = pickup_available
+
+    if is_active is not None:
+        garage_part.is_active = is_active
 
     db.session.commit()
 
@@ -170,3 +180,55 @@ def get_garage_inventory(garage_id):
     inventory = GaragePart.query.filter_by(garage_id=garage_id).all()
 
     return inventory
+
+# ---------------------------------------------------
+# ✅ Delete Part from Inventory
+# ---------------------------------------------------
+def delete_garage_part(garage_part_id, garage_id):
+    garage_part = GaragePart.query.get(garage_part_id)
+
+    if not garage_part:
+        raise ValueError("Garage part not found")
+
+    if garage_part.garage_id != garage_id:
+        raise ValueError("Access denied")
+
+    db.session.delete(garage_part)
+    db.session.commit()
+
+    return True
+
+# ---------------------------------------------------
+# ✅ Edit Part from Inventory
+# ---------------------------------------------------
+def edit_garage_part(garage_part_id, garage_id, **kwargs):
+    garage_part = GaragePart.query.get(garage_part_id)
+
+    if not garage_part:
+        raise ValueError("Garage part not found")
+
+    if garage_part.garage_id != garage_id:
+        raise ValueError("Access denied")
+
+    # Update only provided fields
+    for key, value in kwargs.items():
+        if hasattr(garage_part, key) and value is not None:
+            setattr(garage_part, key, value)
+
+    db.session.commit()
+    return garage_part
+
+
+def toggle_garage_part_active(garage_part_id, garage_id):
+    garage_part = GaragePart.query.get(garage_part_id)
+
+    if not garage_part:
+        raise ValueError("Garage part not found")
+
+    if garage_part.garage_id != garage_id:
+        raise ValueError("Access denied")
+
+    garage_part.is_active = not bool(garage_part.is_active)
+    db.session.commit()
+
+    return garage_part

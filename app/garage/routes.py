@@ -7,6 +7,7 @@ from app.garage.services import (
     get_garage_dashboard,
     get_garage_parts
     )
+from app.orders.services import get_garage_orders, get_order_details, update_order_status
 
 """
 Garage Routes
@@ -132,7 +133,13 @@ def inventory():
         flash("Garage profile not found.", "warning")
         return redirect(url_for("main.home"))
 
-    parts = get_garage_parts(current_user.garage.id)
+    parts = get_garage_parts(
+        current_user.garage.id,
+        category=request.args.get("category") or None,
+        search=request.args.get("search") or None,
+        low_stock_only=True if request.args.get("low_stock_only") else False,
+        show_inactive=True if request.args.get("show_inactive") else False
+    )
 
     return render_template("garage/inventory.html", parts=parts)
 
@@ -175,3 +182,75 @@ def edit_profile():
             flash("Something went wrong while updating the profile.", "danger")
 
     return render_template("garage/edit_profile.html", garage=garage)
+
+
+@garage_bp.route("/orders", methods=["GET"])
+@login_required
+def orders_queue():
+    if current_user.role != "garage":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    if not current_user.garage:
+        flash("Garage profile not found.", "warning")
+        return redirect(url_for("main.home"))
+
+    orders = get_garage_orders(current_user.garage.id)
+    orders = sorted(
+        orders,
+        key=lambda o: (
+            o.status != "pending",
+            o.created_at is None,
+            o.created_at
+        )
+    )
+    return render_template("garage/orders.html", orders=orders)
+
+
+@garage_bp.route("/orders/<int:order_id>", methods=["GET"])
+@login_required
+def order_detail(order_id):
+    if current_user.role != "garage":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    if not current_user.garage:
+        flash("Garage profile not found.", "warning")
+        return redirect(url_for("main.home"))
+
+    try:
+        order = get_order_details(order_id)
+        if order.garage_id != current_user.garage.id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("garage.orders_queue"))
+
+        return render_template("garage/order_detail.html", order=order)
+    except ValueError as e:
+        flash(str(e), "danger")
+        return redirect(url_for("garage.orders_queue"))
+
+
+@garage_bp.route("/orders/<int:order_id>/status", methods=["POST"])
+@login_required
+def update_order_status_page(order_id):
+    if current_user.role != "garage":
+        flash("Access denied.", "danger")
+        return redirect(url_for("main.home"))
+
+    if not current_user.garage:
+        flash("Garage profile not found.", "warning")
+        return redirect(url_for("main.home"))
+
+    status = request.form.get("status")
+    try:
+        order = get_order_details(order_id)
+        if order.garage_id != current_user.garage.id:
+            flash("Access denied.", "danger")
+            return redirect(url_for("garage.orders_queue"))
+
+        update_order_status(order_id=order_id, status=status)
+        flash("Order status updated.", "success")
+    except ValueError as e:
+        flash(str(e), "danger")
+
+    return redirect(request.referrer or url_for("garage.orders_queue"))

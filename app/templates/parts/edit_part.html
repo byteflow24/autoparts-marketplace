@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Part | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="auth-section">
+    <div class="container">
+        <div class="auth-card auth-card-wide">
+            <div class="auth-header">
+                <h1>Edit Part</h1>
+                <p>Update inventory details for this part listing.</p>
+            </div>
+
+            <div class="garage-profile-card">
+                <h2>{{ garage_part.part.name }}</h2>
+                <div class="garage-meta">
+                    <p><strong>Part Number:</strong> {{ garage_part.part.part_number or "—" }}</p>
+                    <p><strong>Brand:</strong> {{ garage_part.part.brand or "—" }}</p>
+                    <p><strong>Category:</strong> {{ garage_part.part.category or "—" }}</p>
+                    <p>
+                        <strong>Car Model:</strong>
+                        {{ garage_part.car_model.make.name }} - {{ garage_part.car_model.name }}
+                    </p>
+                </div>
+            </div>
+
+            <form method="POST" class="auth-form">
+                <h2 class="form-section-title">Inventory Details</h2>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Price</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="price"
+                            class="form-input"
+                            value="{{ garage_part.price }}"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Cost Price</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            name="cost_price"
+                            class="form-input"
+                            value="{{ garage_part.cost_price or '' }}"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Quantity</label>
+                        <input
+                            type="number"
+                            name="quantity"
+                            class="form-input"
+                            value="{{ garage_part.quantity }}"
+                            required
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">From Year</label>
+                        <input
+                            type="number"
+                            name="from_year"
+                            class="form-input"
+                            value="{{ garage_part.from_year or '' }}"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">To Year</label>
+                        <input
+                            type="number"
+                            name="to_year"
+                            class="form-input"
+                            value="{{ garage_part.to_year or '' }}"
+                        >
+                    </div>
+                </div>
+
+                <h2 class="form-section-title">Service Options</h2>
+
+                <div class="checkbox-grid">
+                    <label class="checkbox-item">
+                        <input
+                            type="checkbox"
+                            name="delivery_available"
+                            {% if garage_part.delivery_available %}checked{% endif %}
+                        >
+                        <span>Delivery Available</span>
+                    </label>
+
+                    <label class="checkbox-item">
+                        <input
+                            type="checkbox"
+                            name="installation_available"
+                            {% if garage_part.installation_available %}checked{% endif %}
+                        >
+                        <span>Installation Available</span>
+                    </label>
+
+                    <label class="checkbox-item">
+                        <input
+                            type="checkbox"
+                            name="pickup_available"
+                            {% if garage_part.pickup_available %}checked{% endif %}
+                        >
+                        <span>Pickup Available</span>
+                    </label>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary form-btn">Save Changes</button>
+                </div>
+            </form>
+
+            <div class="auth-footer-text">
+                <p>
+                    <a href="{{ url_for('garage.inventory') }}">Back to Inventory</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

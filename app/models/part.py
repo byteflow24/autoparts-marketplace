@@ -25,6 +25,8 @@ class Part(db.Model):
     part_number = db.Column(String(50), nullable=True)
     brand = db.Column(String(20), nullable=True)
     category = db.Column(String(20), nullable=True)
+    source = db.Column(String(50), nullable=True)  # e.g. "manual", "autoDS"
+    external_id = db.Column(String(100), nullable=True)  # API identifier
 
     garage_parts = db.relationship('GaragePart', back_populates='part')
 
@@ -37,9 +39,11 @@ class GaragePart(db.Model):
     part_id = db.Column(Integer, ForeignKey('parts.id', ondelete='CASCADE'))
     car_model_id = db.Column(Integer, ForeignKey('car_models.id', ondelete='CASCADE'))
     price = db.Column(DECIMAL(10, 2))
+    cost_price = db.Column(DECIMAL(10, 2), nullable=True)
     quantity = db.Column(Integer)
     from_year = db.Column(Integer)
     to_year = db.Column(Integer)
+    is_active = db.Column(Boolean, default=True, nullable=False)
     delivery_available = db.Column(Boolean, default=False)
     installation_available = db.Column(Boolean, default=False)
     pickup_available = db.Column(Boolean, default=False)

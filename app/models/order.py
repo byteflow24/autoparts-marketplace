@@ -25,6 +25,7 @@ class Order(db.Model):
     garage_id = db.Column(Integer, ForeignKey('garages.id', ondelete='CASCADE'))
     total_price = db.Column(DECIMAL(10, 2))
     status = db.Column(String(20))
+    created_at = db.Column(TIMESTAMP, server_default=func.now(), nullable=False)
 
     user = db.relationship('User', back_populates='orders')
     garage = db.relationship('Garage', back_populates='orders')

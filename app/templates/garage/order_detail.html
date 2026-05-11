@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Order {{ order.id }} | AutoParts Marketplace{% endblock %}
+
+{% block content %}
+<section class="inventory-section">
+    <div class="container">
+        <div class="inventory-header">
+            <div>
+                <h1>Order #{{ order.id }}</h1>
+                <p>
+                    Status: <strong>{{ order.status }}</strong>
+                    {% if order.created_at %} · Created {{ order.created_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+                </p>
+            </div>
+
+            <div class="inventory-actions">
+                <a href="{{ url_for('garage.orders_queue') }}" class="btn btn-secondary">Back to Orders</a>
+            </div>
+        </div>
+
+        <div class="garage-profile-card">
+            <h2>Customer</h2>
+            <div class="garage-meta">
+                <p><strong>Name:</strong> {{ order.user.name or "—" }}</p>
+                <p><strong>Email:</strong> {{ order.user.email or "—" }}</p>
+                <p><strong>Phone:</strong> {{ (order.user.country_code or "") ~ " " ~ (order.user.phone or "") if order.user.phone else "—" }}</p>
+            </div>
+        </div>
+
+        <div class="inventory-table-wrapper">
+            <table class="inventory-table">
+                <thead>
+                    <tr>
+                        <th>Part</th>
+                        <th>Part Number</th>
+                        <th>Service</th>
+                        <th>Unit Price</th>
+                        <th>Qty</th>
+                        <th>Line Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in order.order_items %}
+                        <tr>
+                            <td>{{ item.garage_parts.part.name if item.garage_parts and item.garage_parts.part else "Deleted Part" }}</td>
+                            <td>{{ item.garage_parts.part.part_number if item.garage_parts and item.garage_parts.part else "—" }}</td>
+                            <td>{{ item.service_option or "none" }}</td>
+                            <td>QAR {{ item.price }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>QAR {{ (item.price|float * item.quantity)|round(2) }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="dashboard-actions">
+            <form method="POST" action="{{ url_for('garage.update_order_status_page', order_id=order.id) }}" style="display:flex; gap:10px; align-items:center;">
+                <select name="status" class="form-input" style="max-width:220px;">
+                    {% set statuses = ["pending", "confirmed", "completed", "cancelled"] %}
+                    {% for s in statuses %}
+                        <option value="{{ s }}" {% if order.status == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-primary">Update Status</button>
+            </form>
+        </div>
+    </div>
+</section>
+{% endblock %}
+

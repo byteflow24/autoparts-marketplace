@@ -17,6 +17,39 @@
             </div>
         </div>
 
+        <form method="GET" class="inventory-filters">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Search</label>
+                    <input type="text" name="search" class="form-input" value="{{ request.args.get('search','') }}" placeholder="Name or part number">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Category</label>
+                    <input type="text" name="category" class="form-input" value="{{ request.args.get('category','') }}" placeholder="Example: Brakes">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Filters</label>
+                    <div class="checkbox-grid" style="margin-top:10px;">
+                        <label class="checkbox-item">
+                            <input type="checkbox" name="low_stock_only" value="1" {% if request.args.get('low_stock_only') %}checked{% endif %}>
+                            <span>Low stock only</span>
+                        </label>
+                        <label class="checkbox-item">
+                            <input type="checkbox" name="show_inactive" value="1" {% if request.args.get('show_inactive') %}checked{% endif %}>
+                            <span>Show inactive</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-secondary">Apply</button>
+                <a href="{{ url_for('garage.inventory') }}" class="btn btn-secondary">Reset</a>
+            </div>
+        </form>
+
         {% if parts %}
             <div class="inventory-table-wrapper">
                 <table class="inventory-table">
@@ -25,18 +58,23 @@
                             <th>Part Name</th>
                             <th>Part Number</th>
                             <th>Price</th>
+                            <th>Cost</th>
                             <th>Quantity</th>
                             <th>Year Range</th>
                             <th>Delivery</th>
                             <th>Installation</th>
+                            <th>Pickup</th>
+                            <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in parts %}
                             <tr>
-                                <td>{{ item.part.name }}</td>
-                                <td>{{ item.part.part_number or "—" }}</td>
+                                <td>{{ item.part.name if item.part else "Deleted Part" }}</td>
+                                <td>{{ item.part.part_number if item.part and item.part.part_number else "—" }}</td>
                                 <td>QAR {{ item.price }}</td>
+                                <td>{% if item.cost_price %}QAR {{ item.cost_price }}{% else %}—{% endif %}</td>
                                 <td>{{ item.quantity }}</td>
                                 <td>
                                     {% if item.from_year and item.to_year %}
@@ -69,6 +107,30 @@
                                     {% else %}
                                         No
                                     {% endif %}
+                                </td>
+                                <td>
+                                    {% if item.is_active %}
+                                        Active
+                                    {% else %}
+                                        Inactive
+                                    {% endif %}
+                                </td>
+                                <td class="table-actions">
+                                    <a href="{{ url_for('parts.edit_garage_part_route', garage_part_id=item.id) }}" class="btn btn-secondary btn-sm">
+                                        Edit
+                                    </a>
+
+                                    <form method="POST" action="{{ url_for('parts.toggle_garage_part_active_route', garage_part_id=item.id) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-secondary btn-sm">
+                                            {% if item.is_active %}Deactivate{% else %}Activate{% endif %}
+                                        </button>
+                                    </form>
+
+                                    <form method="POST" action="{{ url_for('parts.delete_garage_part_route', garage_part_id=item.id) }}" style="display:inline;">
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            Delete
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                         {% endfor %}
