@@ -41,6 +41,7 @@ class OrderItem(db.Model):
     quantity = db.Column(Integer)
     price = db.Column(DECIMAL(10, 2))
     service_option = db.Column(String(20), default="none")
+    item_status = db.Column(String(20), default="pending")
 
     orders = db.relationship('Order', back_populates='order_items')
     garage_parts = db.relationship("GaragePart", back_populates='order_items')

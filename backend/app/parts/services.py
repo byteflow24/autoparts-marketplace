@@ -1,8 +1,8 @@
 from app import db
 from app.models.part import Part, GaragePart
 from app.models.garage import Garage
-from app.models.car import CarModel
-from sqlalchemy import or_
+from app.models.car import CarModel, CarSubModel , GaragePartCompatibleCar
+from sqlalchemy import or_, exists, and_
 
 """
 Parts Services (Business Logic)
@@ -24,45 +24,151 @@ This is the core logic layer of the system.
 # Catalog Services
 # =====================================================
 
-def search_catalog(query, brand=None, category=None, limit=20):
+def search_catalog(query, brand=None, category=None, subcategory=None,
+                   car_model_id=None, year=None, limit=20):
     """
-    Search the global parts catalog.
+    Search the global parts catalog across multiple fields.
 
-    Searches by:
-    - name
-    - part number
-    - OEM number
-    - brand
+    When car_model_id is supplied the results are narrowed to parts that
+    are listed in the inventory for that specific car model, either as the
+    primary car on a GaragePart row or as an entry in the
+    GaragePartCompatibleCar "also fits" table.  When year is also given the
+    year range stored on those rows is respected
+    (from_year ≤ year ≤ to_year, with NULL treated as open-ended).
+
+    Ranking priority (highest → lowest):
+      1. Exact part_number match
+      2. Exact oem_number match
+      3. Exact name match  (case-insensitive)
+      4. Exact brand match
+      5. Partial match on any field
 
     Returns:
-        list[Part]
+        list[Part]  — ranked, limited to `limit`
     """
 
     q = Part.query
 
+    # ── Car filter — primary listing OR compatible-car entry ──
+    if car_model_id:
+        try:
+            car_model_id_int = int(car_model_id)
+            year_int = int(year) if year else None
+        except (TypeError, ValueError):
+            car_model_id_int = None
+            year_int = None
+
+        if car_model_id_int:
+            # Build year-range conditions (NULL = open-ended)
+            def year_range_ok(from_col, to_col, yr):
+                if yr:
+                    return and_(
+                        or_(from_col == None, from_col <= yr),  # noqa: E711
+                        or_(to_col   == None, to_col   >= yr),  # noqa: E711
+                    )
+                return True  # no year supplied → don't filter by year
+
+            yr = year_int
+
+            # Subquery 1: part is listed as the primary car on a GaragePart
+            primary_match = (
+                GaragePart.car_model_id == car_model_id_int
+            )
+            if yr:
+                primary_match = and_(
+                    primary_match,
+                    or_(GaragePart.from_year == None, GaragePart.from_year <= yr),  # noqa: E711
+                    or_(GaragePart.to_year   == None, GaragePart.to_year   >= yr),  # noqa: E711
+                )
+
+            primary_sub = exists().where(
+                and_(GaragePart.part_id == Part.id, primary_match)
+            )
+
+            # Subquery 2: part appears in the "also fits" compat table
+            compat_match = (
+                GaragePartCompatibleCar.car_model_id == car_model_id_int
+            )
+            if yr:
+                compat_match = and_(
+                    compat_match,
+                    or_(GaragePartCompatibleCar.from_year == None, GaragePartCompatibleCar.from_year <= yr),  # noqa: E711
+                    or_(GaragePartCompatibleCar.to_year   == None, GaragePartCompatibleCar.to_year   >= yr),  # noqa: E711
+                )
+
+            compat_sub = exists().where(
+                and_(
+                    GaragePartCompatibleCar.garage_part_id == GaragePart.id,
+                    GaragePart.part_id == Part.id,
+                    compat_match,
+                )
+            )
+
+            q = q.filter(or_(primary_sub, compat_sub))
+
+    # ── Apply text filter ─────────────────────────────────────
     if query:
         like = f"%{query}%"
-
         q = q.filter(
             or_(
                 Part.name.ilike(like),
                 Part.part_number.ilike(like),
                 Part.oem_number.ilike(like),
                 Part.brand.ilike(like),
+                Part.manufacturer.ilike(like),
             )
         )
 
+    # ── Apply optional filters ────────────────────────────────
     if brand:
         q = q.filter(Part.brand.ilike(f"%{brand}%"))
 
     if category:
         q = q.filter(Part.category.ilike(f"%{category}%"))
 
-    return (
-        q.order_by(Part.name.asc())
-        .limit(limit)
-        .all()
-    )
+    if subcategory:
+        q = q.filter(Part.subcategory.ilike(f"%{subcategory}%"))
+
+    # ── Fetch then rank in Python ─────────────────────────────
+    # Fetching limit * 4 gives the ranker enough candidates
+    # without loading the whole table.
+    candidates = q.limit(limit * 4).all()
+
+    if not candidates:
+        return []
+
+    q_lower = query.lower().strip() if query else ""
+
+    def score(part):
+        """
+        Lower score = higher rank.
+
+        Exact matches on the most specific identifiers come first.
+        Partial matches come last.
+        """
+        pn  = (part.part_number  or "").lower()
+        oem = (part.oem_number   or "").lower()
+        nm  = (part.name         or "").lower()
+        br  = (part.brand        or "").lower()
+
+        if q_lower:
+            if pn  == q_lower: return 0   # exact part number
+            if oem == q_lower: return 1   # exact OEM number
+            if nm  == q_lower: return 2   # exact name
+            if br  == q_lower: return 3   # exact brand
+            if pn.startswith(q_lower):  return 4   # part number starts with
+            if oem.startswith(q_lower): return 5   # OEM starts with
+            if nm.startswith(q_lower):  return 6   # name starts with
+            if br.startswith(q_lower):  return 7   # brand starts with
+
+        # Verified parts before unverified within each tier
+        base = 8
+        if part.verified:
+            return base
+        return base + 1
+
+    ranked = sorted(candidates, key=score)
+    return ranked[:limit]
 
 
 def find_existing_part(part_number=None, oem_number=None, name=None, brand=None):
@@ -113,8 +219,10 @@ def create_part(
     brand=None,
     manufacturer=None,
     category=None,
+    subcategory=None,
     description=None,
     image_url=None,
+    country_of_origin=None,
     source="manual",
     external_id=None,
     verified=False
@@ -135,8 +243,10 @@ def create_part(
         brand=brand,
         manufacturer=manufacturer,
         category=category,
+        subcategory=subcategory,
         description=description,
         image_url=image_url,
+        country_of_origin=country_of_origin,
         source=source,
         external_id=external_id,
         verified=verified
@@ -146,7 +256,7 @@ def create_part(
     db.session.commit()
 
     return part
-    
+
 
 def create_or_get_part(
     *,
@@ -156,8 +266,10 @@ def create_or_get_part(
     brand=None,
     manufacturer=None,
     category=None,
+    subcategory=None,
     description=None,
     image_url=None,
+    country_of_origin=None,
     source="manual",
     external_id=None,
     verified=False
@@ -184,8 +296,10 @@ def create_or_get_part(
         brand=brand,
         manufacturer=manufacturer,
         category=category,
+        subcategory=subcategory,
         description=description,
         image_url=image_url,
+        country_of_origin=country_of_origin,
         source=source,
         external_id=external_id,
         verified=verified
@@ -211,6 +325,7 @@ def update_catalog_part(part_id, **kwargs):
         "brand",
         "manufacturer",
         "category",
+        "subcategory",
         "description",
         "image_url",
         "verified",
@@ -230,9 +345,14 @@ def update_catalog_part(part_id, **kwargs):
 # ---------------------------------------------------
 # ✅ Add Part to Garage Inventory
 # ---------------------------------------------------
-def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_year, to_year,
-                       delivery_available=False, installation_available=False, pickup_available=False,
-                       cost_price=None, is_active=True):
+def add_part_to_garage(
+    garage_id, part_id, car_model_id, price, quantity, from_year, to_year,
+    car_sub_model_id=None, year=None,
+    condition="new",
+    delivery_available=False, installation_available=False,
+    installation_price=None,
+    cost_price=None, is_active=True
+):
     """
     Adds a part to a garage inventory (GaragePart).
 
@@ -255,12 +375,20 @@ def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_
     car_model = CarModel.query.get(car_model_id)
     if not car_model:
         raise ValueError("Car model not found")
-    
+
+    if car_sub_model_id:
+        sub = CarSubModel.query.get(car_sub_model_id)
+        if not sub or sub.model_id != int(car_model_id):
+            raise ValueError("Invalid sub-model for the selected car model")
+    else:
+        car_sub_model_id = None
+
     # 🔍 Check duplicate (same garage + part + car_model)
     existing = GaragePart.query.filter_by(
         garage_id=garage_id,
         part_id=part_id,
         car_model_id=car_model_id,
+        car_sub_model_id=car_sub_model_id,
         from_year=from_year,
         to_year=to_year
     ).first()
@@ -270,22 +398,24 @@ def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_
         existing.quantity += quantity
         db.session.commit()
         return existing
-    
+
     # ✅ Create new GaragePart
-    # Note: cost_price is optional now (used later for profit reporting).
     garage_part = GaragePart(
         garage_id=garage_id,
         part_id=part_id,
         car_model_id=car_model_id,
+        car_sub_model_id=car_sub_model_id,
+        year=year,
         price=price,
         cost_price=cost_price,
         quantity=quantity,
         from_year=from_year,
         to_year=to_year,
+        condition=condition,
         is_active=is_active,
         delivery_available=delivery_available,
         installation_available=installation_available,
-        pickup_available=pickup_available
+        installation_price=installation_price,
     )
 
     db.session.add(garage_part)
@@ -296,10 +426,13 @@ def add_part_to_garage( garage_id, part_id, car_model_id, price, quantity, from_
 # ---------------------------------------------------
 # ✅ Update Part in Garage
 # ---------------------------------------------------
-def update_part( garage_part_id, price=None, quantity=None,
-                from_year=None, to_year=None,
-                delivery_available=False, installation_available=False, pickup_available=False,
-                cost_price=None, is_active=None):
+def update_part(
+    garage_part_id, price=None, quantity=None,
+    from_year=None, to_year=None,
+    delivery_available=False, installation_available=False,
+    installation_price=None,
+    cost_price=None, is_active=None
+):
     """
     Update existing garage part.
 
@@ -307,7 +440,7 @@ def update_part( garage_part_id, price=None, quantity=None,
     - Price update
     - Stock refill/change
     - Year compatibility
-    - Service options
+    - Service options + prices
     """
 
     garage_part = GaragePart.query.get(garage_part_id)
@@ -336,9 +469,10 @@ def update_part( garage_part_id, price=None, quantity=None,
 
     if installation_available is not None:
         garage_part.installation_available = installation_available
-    
-    if pickup_available is not None:
-        garage_part.pickup_available = pickup_available
+
+    # Service prices: allow explicit None to clear, so use sentinel check
+    # (caller passes the value from request data, which is None if not sent)
+    garage_part.installation_price = installation_price
 
     # ✅ Seller can hide a listing without deleting it
     if is_active is not None:
@@ -373,7 +507,7 @@ def get_garage_inventory(garage_id, category=None, search=None, low_stock_only=F
             )
     if category:
         query = query.join(Part).filter(Part.category.ilike(f"%{category}%"))
-        
+
     return query.all()
 
 
@@ -397,7 +531,7 @@ def delete_garage_part(garage_part_id, garage_id):
 # ---------------------------------------------------
 # ✅ Edit Part from Inventory
 # ---------------------------------------------------
-def edit_garage_part(garage_part_id, garage_id, **kwargs):
+def edit_garage_part(garage_part_id, garage_id, car_sub_model_id="__unset__", **kwargs):
     garage_part = GaragePart.query.get(garage_part_id)
 
     if not garage_part:
@@ -405,6 +539,14 @@ def edit_garage_part(garage_part_id, garage_id, **kwargs):
 
     if garage_part.garage_id != garage_id:
         raise ValueError("Access denied")
+
+    # Handle sub_model explicitly (can be explicitly set to None to clear it)
+    if car_sub_model_id != "__unset__":
+        if car_sub_model_id is not None:
+            sub = CarSubModel.query.get(car_sub_model_id)
+            if not sub or sub.model_id != garage_part.car_model_id:
+                raise ValueError("Invalid sub-model for this part's car model")
+        garage_part.car_sub_model_id = car_sub_model_id
 
     # Update only provided fields
     for key, value in kwargs.items():

@@ -135,7 +135,7 @@ def update_order_status(order_id, status):
 
     if status == "cancelled" and order.status != "cancelled":
         for item in order.order_items:
-            item.garage_parts.quantity += item.quantity
+            item.garage_part.quantity += item.quantity
     
     order.status = status
     db.session.commit()

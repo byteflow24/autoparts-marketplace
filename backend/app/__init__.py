@@ -40,7 +40,7 @@ def create_app():
     jwt.init_app(app)
 
     with app.app_context():
-        from app.models import user, garage, part, order, car
+        from app.models import user, garage, part, order, car, review
         from app.cli import register_cli
         register_cli(app)
         # Import Blueprints later
@@ -50,6 +50,9 @@ def create_app():
         from app.orders.routes import orders_bp
         from app.parts.routes import parts_bp
         from app.search.routes import search_bp
+        from app.reviews.routes import reviews_bp
+        from app.profile.routes import profile_bp
+        from app.saved_parts.routes import saved_parts_bp
 
         app.register_blueprint(main_bp)
         app.register_blueprint(auth_bp)
@@ -57,5 +60,8 @@ def create_app():
         app.register_blueprint(orders_bp)
         app.register_blueprint(parts_bp)
         app.register_blueprint(search_bp)
+        app.register_blueprint(reviews_bp)
+        app.register_blueprint(profile_bp)
+        app.register_blueprint(saved_parts_bp)
 
     return app

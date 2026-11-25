@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API = '/api'
 
 const INITIAL = {
   name: '', email: '', password: '', confirm_password: '',

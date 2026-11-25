@@ -27,7 +27,7 @@ services:
     build: ./backend
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "5001:5000"
     volumes:
       - ./backend:/app        # live-reload in dev; remove in prod
     environment:
@@ -36,6 +36,8 @@ services:
       SECRET_KEY:      dev-secret-change-in-prod
       JWT_SECRET_KEY:  jwt-dev-secret-change-in-prod
       DATABASE_URL:    postgresql://mohamed:MySecrets@db:5432/auto_parts_db
+      SERPAPI_KEY:     fca3021e9d1b3e4791bc03dad244d94b547d187f64af6119d1f1a158162eaa4a
+      API_NINJAS_KEY:  QfxFXkuB7Zi5DdhjBVZSF9yG25bEEdCJyPoHZBrP
     depends_on:
       db:
         condition: service_healthy   # wait for Postgres to be ready
@@ -51,8 +53,8 @@ services:
     volumes:
       - ./frontend:/app       # live-reload in dev
       - /app/node_modules     # keep container's node_modules intact
-    environment:
-      VITE_API_URL: http://localhost:5000
+    # environment:
+    #   VITE_API_URL: http://localhost:5001
     depends_on:
       - backend
 

@@ -10,6 +10,7 @@ from app.orders.services import (
     get_garage_orders,
     get_order_details
 )
+from app.models.order import OrderItem
 from app.models.part import GaragePart
 
 """
@@ -26,20 +27,45 @@ Endpoints:
   GET   /orders/user/<user_id>        → orders by user id
   GET   /orders/garage/<garage_id>    → orders by garage id
   GET   /orders/<order_id>/total      → recalculate order total
+  PUT   /orders/<order_id>/items/<item_id>/status  → per-item status (garage only)
 """
 
 orders_bp = Blueprint('orders', __name__, url_prefix='/orders')
 
 
+def _derive_order_status(order):
+    """
+    Derive the order-level status from its items' item_status values.
+
+    Rules:
+      - Ignore cancelled items unless ALL items are cancelled
+      - Any active item is pending        → 'pending'
+      - All active items confirmed
+        (some may also be completed)       → 'confirmed'
+      - All active items completed         → 'completed'
+      - Every item cancelled              → 'cancelled'
+      - No items                          → keep current order.status
+    """
+    items = order.order_items
+    if not items:
+        return order.status
+
+    statuses = [getattr(i, 'item_status', None) or 'pending' for i in items]
+    active = [s for s in statuses if s != 'cancelled']
+
+    if not active:
+        return 'cancelled'
+    if any(s == 'pending' for s in active):
+        return 'pending'
+    if all(s == 'completed' for s in active):
+        return 'completed'
+    if all(s in ('confirmed', 'completed') for s in active):
+        return 'confirmed'
+    return 'pending'
+
+
 # ---------------------------------------------------
 # POST /orders/checkout  (customer only)
-# Body: {
-#   "payment_method": "cod",
-#   "cart": [
-#     { "garage_part_id": 1, "garage_id": 1,
-#       "quantity": 2, "service_option": "delivery" }
-#   ]
-# }
 # ---------------------------------------------------
 @orders_bp.route("/checkout", methods=["POST"])
 @jwt_required()
@@ -74,8 +100,6 @@ def checkout():
             return jsonify({"error": f"Delivery not available for '{gp.part.name}'."}), 400
         if svc == "installation" and not gp.installation_available:
             return jsonify({"error": f"Installation not available for '{gp.part.name}'."}), 400
-        if svc == "pickup"       and not gp.pickup_available:
-            return jsonify({"error": f"Pickup not available for '{gp.part.name}'."}), 400
 
     # Group by garage → one order per garage
     grouped = defaultdict(list)
@@ -116,13 +140,18 @@ def checkout():
 def my_orders():
     user_id = int(get_jwt_identity())
     orders  = get_user_orders(user_id)
+
+    orders = sorted(orders, key=lambda o: (o.created_at is None, o.created_at), reverse=True)
+
     data = [
         {
-            "order_id": o.id,
-            "garage_id": o.garage_id,
-            "status": o.status,
+            "order_id":    o.id,
+            "garage_id":   o.garage_id,
+            "garage_name": o.garage.garage_name if o.garage else "—",
+            "item_count":  len(o.order_items),
+            "status":      o.status,
             "total_price": float(o.total_price) if o.total_price else 0,
-            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "created_at":  o.created_at.isoformat() if o.created_at else None,
         }
         for o in orders
     ]
@@ -148,27 +177,37 @@ def order_detail(order_id):
         if role == "garage" and order.garage_id != garage_id:
             return jsonify({"error": "Access denied."}), 403
 
-        items = [
-            {
-                "item_id": item.id,
-                "part_name": item.garage_part.part.name,
-                "part_number": item.garage_part.part.part_number,
-                "price": float(item.price),
-                "quantity": item.quantity,
+        def _item(item):
+            gp   = item.garage_parts
+            part = gp.part if gp else None
+            return {
+                "item_id":       item.id,
+                "part_name":     part.name        if part else "Deleted Part",
+                "part_number":   part.part_number if part else None,
+                "year":          gp.year          if gp else None,
+                "car_make":      gp.car_model.make.name if (gp and gp.car_model and gp.car_model.make) else None,
+                "car_model":     gp.car_model.name      if (gp and gp.car_model) else None,
+                "car_sub_model": gp.car_sub_model.name  if (gp and gp.car_sub_model) else None,
+                "category":      part.category    if part else None,
+                "subcategory":   part.subcategory if part else None,
+                "price":         float(item.price),
+                "quantity":      item.quantity,
                 "service_option": item.service_option,
-                "line_total": round(float(item.price) * item.quantity, 2)
+                "line_total":    round(float(item.price) * item.quantity, 2),
+                "item_status":   getattr(item, 'item_status', None) or "pending",
             }
-            for item in order.order_items
-        ]
+
+        items = [_item(item) for item in order.order_items]
 
         return jsonify({
-            "order_id": order.id,
-            "user_id": order.user_id,
-            "garage_id": order.garage_id,
-            "status": order.status,
+            "order_id":    order.id,
+            "user_id":     order.user_id,
+            "garage_id":   order.garage_id,
+            "garage_name": order.garage.garage_name if order.garage else None,
+            "status":      order.status,
             "total_price": float(order.total_price) if order.total_price else 0,
-            "created_at": order.created_at.isoformat() if order.created_at else None,
-            "items": items,
+            "created_at":  order.created_at.isoformat() if order.created_at else None,
+            "items":       items,
             "customer": {
                 "name":  order.user.name  if order.user else "—",
                 "email": order.user.email if order.user else "—",
@@ -183,7 +222,7 @@ def order_detail(order_id):
 
 # ---------------------------------------------------
 # PUT /orders/<order_id>/status  (garage only)
-# Body: { "status": "confirmed" }
+# Kept for backward-compat; now also auto-syncs from items.
 # ---------------------------------------------------
 @orders_bp.route("/<int:order_id>/status", methods=["PUT"])
 @jwt_required()
@@ -211,6 +250,57 @@ def update_status(order_id):
 
 
 # ---------------------------------------------------
+# PUT /orders/<order_id>/items/<item_id>/status  (garage only)
+# Updates item_status and auto-derives + saves orders.status
+# ---------------------------------------------------
+@orders_bp.route("/<int:order_id>/items/<int:item_id>/status", methods=["PUT"])
+@jwt_required()
+def update_item_status(order_id, item_id):
+    claims    = get_jwt()
+    garage_id = claims.get("garage_id")
+
+    if claims.get("role") != "garage":
+        return jsonify({"error": "Only garages can update item status."}), 403
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Request body must be JSON"}), 400
+
+    status = data.get("status")
+    if status not in {"pending", "confirmed", "completed", "cancelled"}:
+        return jsonify({"error": f"Invalid status '{status}'."}), 400
+
+    try:
+        order = get_order_details(order_id)
+        if order.garage_id != garage_id:
+            return jsonify({"error": "Access denied."}), 403
+
+        item = OrderItem.query.filter_by(id=item_id, order_id=order_id).first()
+        if not item:
+            return jsonify({"error": "Item not found."}), 404
+
+        # 1. Save item status
+        item.item_status = status
+
+        # 2. Auto-derive and save order-level status
+        from app import db
+        db.session.flush()  # make the new item_status visible to _derive_order_status
+        new_order_status = _derive_order_status(order)
+        order.status = new_order_status
+        db.session.commit()
+
+        return jsonify({
+            "order_id":         order_id,
+            "item_id":          item_id,
+            "new_item_status":  status,
+            "new_order_status": new_order_status,
+        }), 200
+
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+# ---------------------------------------------------
 # GET /orders/user/<user_id>
 # ---------------------------------------------------
 @orders_bp.route("/user/<int:user_id>", methods=["GET"])
@@ -223,11 +313,11 @@ def user_orders_route(user_id):
     orders = get_user_orders(user_id)
     data = [
         {
-            "order_id": o.id,
-            "garage_id": o.garage_id,
+            "order_id":    o.id,
+            "garage_id":   o.garage_id,
             "total_price": float(o.total_price) if o.total_price else 0,
-            "status": o.status,
-            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "status":      o.status,
+            "created_at":  o.created_at.isoformat() if o.created_at else None,
         }
         for o in orders
     ]
@@ -247,11 +337,11 @@ def garage_orders_route(garage_id):
     orders = get_garage_orders(garage_id)
     data = [
         {
-            "order_id": o.id,
-            "user_id": o.user_id,
+            "order_id":    o.id,
+            "user_id":     o.user_id,
             "total_price": float(o.total_price) if o.total_price else 0,
-            "status": o.status,
-            "created_at": o.created_at.isoformat() if o.created_at else None,
+            "status":      o.status,
+            "created_at":  o.created_at.isoformat() if o.created_at else None,
         }
         for o in orders
     ]

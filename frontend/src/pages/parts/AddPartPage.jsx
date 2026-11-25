@@ -1,49 +1,75 @@
+/**
+ * AddPartPage.jsx  —  Garage only
+ * Place at: frontend/src/pages/parts/AddPartPage.jsx
+ *
+ * Flow:
+ *   1. Set the car (year → make → model → sub-model) — locked until "Change Car"
+ *   2. Keep adding parts for that car; each submit saves immediately
+ *   3. Session state (car + added parts) persisted in localStorage
+ *
+ * Auto-fill changes:
+ *  - handleAILookup sends: part_name + car make/model/sub-model/year (not part_number)
+ *  - handleApplyLookup also fills: part_number, from_year, to_year
+ *  - PartForm receives: carMakeName, carModelName, carSubModelName (derived from IDs)
+ *  - onDismissLookup resets lookupResult, lookupApplied, lookupError and clears
+ *    the auto-filled fields so the user can edit manually
+ *
+ * Child components live in ./addpart/
+ */
+
 import { useState, useEffect } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+import { BLANK_PART, loadSession, saveSession, clearSession } from './addpart/partConstants'
+import { CarSelector }    from './addpart/CarSelector'
+import { AddedPartsList } from './addpart/AddedPartsList'
+import { PartForm }       from './addpart/PartForm'
 
-const INITIAL = {
-  name: '',
-  part_number: '',
-  brand: '',
-  category: '',
-  car_make_id: '',
-  car_model_id: '',
-  from_year: '',
-  to_year: '',
-  price: '',
-  cost_price: '',
-  quantity: '',
-  delivery_available: false,
-  installation_available: false,
-  pickup_available: false,
-}
+// Re-export so external consumers (e.g. search) can still import from here
+export { SUBCATEGORY_MAP, CATEGORIES } from './addpart/partConstants'
 
-/**
- * AddPartPage  (Garage only)
- *
- * 1. On mount → GET /parts/car-makes and /parts/car-models
- * 2. On submit → POST /parts/create, then POST /parts/add-to-garage
- * 3. On success → redirect to /garage/inventory
- */
+const API = '/api'
+
 export function AddPartPage() {
   const navigate = useNavigate()
 
-  const [formData, setFormData] = useState(INITIAL)
-  const [makes, setMakes] = useState([])
-  const [allModels, setAllModels] = useState([])
-  const [models, setModels] = useState([])
+  // ── Car state ──────────────────────────────────────────────────────────────
+  const [carLocked,     setCarLocked]     = useState(false)
+  const [year,          setYear]          = useState('')
+  const [makes,         setMakes]         = useState([])
+  const [allModels,     setAllModels]     = useState([])
+  const [models,        setModels]        = useState([])
+  const [subModels,     setSubModels]     = useState([])
+  const [carMakeId,     setCarMakeId]     = useState('')
+  const [carModelId,    setCarModelId]    = useState('')
+  const [carSubModelId, setCarSubModelId] = useState('')
+  const [carErrors,     setCarErrors]     = useState({})
 
-  const [errors, setErrors] = useState({})
-  const [apiError, setApiError] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [success, setSuccess] = useState(false)
+  // ── Part form state ────────────────────────────────────────────────────────
+  const [part,           setPart]           = useState({ ...BLANK_PART })
+  const [partErrors,     setPartErrors]     = useState({})
+  const [catalogResults, setCatalogResults] = useState([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [lookupLoading,  setLookupLoading]  = useState(false)
+  const [lookupResult,   setLookupResult]   = useState(null)
+  const [lookupError,    setLookupError]    = useState('')
+  const [lookupApplied,  setLookupApplied]  = useState(false)
+  const [saving,         setSaving]         = useState(false)
+  const [saveError,      setSaveError]      = useState('')
 
+  // ── Added parts list (this session) ───────────────────────────────────────
+  const [addedParts, setAddedParts] = useState([])
+
+  // ── Dropdown load ──────────────────────────────────────────────────────────
+  const [dropdownsLoading, setDropdownsLoading] = useState(true)
+
+  const currentYear = new Date().getFullYear()
+  const years = Array.from({ length: currentYear - 1899 }, (_, i) => currentYear - i)
+
+  // ── Load makes + models ────────────────────────────────────────────────────
   useEffect(() => {
-    async function loadDropdowns() {
+    async function load() {
       try {
         const [makesRes, modelsRes] = await Promise.all([
           axios.get(`${API}/parts/car-makes`),
@@ -52,338 +78,424 @@ export function AddPartPage() {
         setMakes(makesRes.data || [])
         setAllModels(modelsRes.data || [])
         setModels(modelsRes.data || [])
-      } catch {
-        setApiError('Failed to load car makes and models.')
-      } finally {
-        setLoading(false)
-      }
+      } catch {}
+      finally { setDropdownsLoading(false) }
     }
-    loadDropdowns()
+    load()
   }, [])
 
-  function handleChange(e) {
-    const { name, value, type, checked } = e.target
-    const nextValue = type === 'checkbox' ? checked : value
-
-    if (name === 'car_make_id') {
-      setModels(value
-        ? allModels.filter(m => String(m.make_id) === String(value))
-        : allModels
-      )
-      setFormData(prev => ({ ...prev, car_make_id: value, car_model_id: '' }))
-    } else {
-      setFormData(prev => ({ ...prev, [name]: nextValue }))
+  // ── Restore session ────────────────────────────────────────────────────────
+  useEffect(() => {
+    const sess = loadSession()
+    if (!sess) return
+    if (sess.carLocked) {
+      setCarLocked(true)
+      setYear(sess.year || '')
+      setCarMakeId(sess.carMakeId || '')
+      setCarModelId(sess.carModelId || '')
+      setCarSubModelId(sess.carSubModelId || '')
     }
+    setAddedParts(sess.addedParts || [])
+  }, [])
 
-    setErrors(prev => ({ ...prev, [name]: '' }))
-    setApiError('')
+  // ── Fetch sub-models when model changes ────────────────────────────────────
+  useEffect(() => {
+    if (!carModelId) { setSubModels([]); return }
+    axios.get(`${API}/parts/car-sub-models`, { params: { model_id: carModelId } })
+      .then(res => setSubModels(res.data || []))
+      .catch(() => setSubModels([]))
+  }, [carModelId])
+
+  // ── Filter models when make changes ───────────────────────────────────────
+  useEffect(() => {
+    if (!carMakeId) { setModels(allModels); return }
+    setModels(allModels.filter(m => String(m.make_id) === String(carMakeId)))
+  }, [carMakeId, allModels])
+
+  // ── Catalog search debounce ────────────────────────────────────────────────
+  useEffect(() => {
+    const q = part.catalogQuery.trim()
+    if (q.length < 2) { setCatalogResults([]); return }
+    const t = setTimeout(() => searchCatalog(q), 400)
+    return () => clearTimeout(t)
+  }, [part.catalogQuery])
+
+  // ── Persist session ────────────────────────────────────────────────────────
+  useEffect(() => {
+    saveSession({ carLocked, year, carMakeId, carModelId, carSubModelId, addedParts })
+  }, [carLocked, year, carMakeId, carModelId, carSubModelId, addedParts])
+
+  // ── Car name helpers (for AI lookup context) ───────────────────────────────
+  const carMakeName     = makes.find(m => String(m.id) === String(carMakeId))?.name || ''
+  const carModelName    = allModels.find(m => String(m.id) === String(carModelId))?.name || ''
+  const carSubModelName = subModels.find(s => String(s.id) === String(carSubModelId))?.name || ''
+
+  function carLabel() {
+    return [year, carMakeName, carModelName, carSubModelName].filter(Boolean).join(' · ')
   }
 
-  function validate() {
+  async function searchCatalog(q) {
+    setCatalogLoading(true)
+    try {
+      const params = { q, limit: 10 }
+      if (carModelId) params.car_model_id = carModelId
+      if (year)       params.year         = year
+      const res = await axios.get(`${API}/parts/catalog/search`, { params })
+      setCatalogResults(res.data || [])
+    } catch { setCatalogResults([]) }
+    finally { setCatalogLoading(false) }
+  }
+
+  // ── Car handlers ──────────────────────────────────────────────────────────
+  function handleLockCar() {
     const errs = {}
+    if (!year)       errs.year       = 'Select a year.'
+    if (!carMakeId)  errs.carMakeId  = 'Select a make.'
+    if (!carModelId) errs.carModelId = 'Select a model.'
+    if (Object.keys(errs).length) { setCarErrors(errs); return }
+    setCarErrors({})
+    setCarLocked(true)
+  }
 
-    if (!formData.name.trim())
-      errs.name = 'Part name is required.'
+  function handleUnlockCar() {
+    setCarLocked(false)
+    setCarSubModelId('')
+  }
 
-    if (!formData.car_model_id)
-      errs.car_model_id = 'Car model is required.'
+  // ── Part form helpers ─────────────────────────────────────────────────────
+  function setPF(key, value) {
+    setPart(prev => ({ ...prev, [key]: value }))
+    setPartErrors(prev => ({ ...prev, [key]: '' }))
+    setSaveError('')
+  }
 
-    if (!formData.price || Number(formData.price) <= 0)
-      errs.price = 'Price must be greater than 0.'
+  function handleCatalogSelect(p) {
+    setPart(prev => ({
+      ...prev,
+      selectedPart: p,
+      creatingNew: false,
+      catalogQuery: p.name,
+      name: p.name || '',
+      part_number: p.part_number || '',
+      brand: p.brand || '',
+      category: p.category || '',
+      subcategory: '',
+    }))
+    setCatalogResults([])
+  }
 
-    if (formData.quantity === '' || Number(formData.quantity) < 0)
-      errs.quantity = 'Quantity is required.'
+  function handleCreateNew() {
+    const name = part.catalogQuery.trim()
+    setPart(prev => ({
+      ...prev,
+      selectedPart: null,
+      creatingNew: true,
+      name,
+      part_number: '', brand: '', category: '', subcategory: '',
+      country_of_origin: '', description: '',
+    }))
+    setCatalogResults([])
+    setLookupResult(null); setLookupApplied(false); setLookupError('')
+  }
 
-    if (formData.from_year && formData.to_year &&
-        Number(formData.from_year) > Number(formData.to_year)) {
-      errs.to_year = 'To year must be greater than or equal to from year.'
+  function handleCategoryChange(cat) {
+    setPart(prev => ({ ...prev, category: cat, subcategory: '' }))
+  }
+
+  // ── AI Lookup — searches by part name (or part number if name is empty) ─────
+  async function handleAILookup() {
+    // Use part name if available; fall back to part number as the search term
+    const partName   = part.name.trim()
+    const partNumber = part.part_number.trim()
+    const searchTerm = partName || partNumber
+
+    if (!searchTerm) { setLookupError('Enter a part name or part number first.'); return }
+
+    setLookupLoading(true); setLookupError(''); setLookupResult(null); setLookupApplied(false)
+    try {
+      const res = await axios.post(`${API}/parts/lookup`, {
+        part_name:     searchTerm,           // backend accepts name or number as search term
+        car_make:      carMakeName      || undefined,
+        car_model:     carModelName     || undefined,
+        car_sub_model: carSubModelName  || undefined,
+        year:          year             || undefined,
+      })
+      setLookupResult(res.data)
+    } catch (err) {
+      setLookupError(err?.response?.data?.error || 'Lookup failed.')
+    } finally { setLookupLoading(false) }
+  }
+
+  // ── Apply Lookup — fills part_number, from_year, to_year + catalog fields ──
+  function handleApplyLookup() {
+    if (!lookupResult) return
+    setPart(prev => ({
+      ...prev,
+      // Catalog-level fields
+      name:              lookupResult.name              || prev.name,
+      category:          lookupResult.category          || prev.category,
+      subcategory:       lookupResult.subcategory       || prev.subcategory,
+      description:       lookupResult.description       || prev.description,
+      // Inventory-level fields now filled from lookup
+      part_number:       lookupResult.part_number       || prev.part_number,
+      from_year:         lookupResult.from_year != null
+                           ? String(lookupResult.from_year)
+                           : prev.from_year,
+      to_year:           lookupResult.to_year != null
+                           ? String(lookupResult.to_year)
+                           : prev.to_year,
+    }))
+    setLookupApplied(true)
+  }
+
+  // ── Dismiss Lookup — resets auto-fill and clears filled fields ─────────────
+  function handleDismissLookup() {
+    setLookupResult(null)
+    setLookupApplied(false)
+    setLookupError('')
+    // Clear the auto-filled fields so user can edit them freely
+    setPart(prev => ({
+      ...prev,
+      part_number: '',
+      from_year: '',
+      to_year: '',
+      category: '',
+      subcategory: '',
+    }))
+  }
+
+  // ── Compat rows ───────────────────────────────────────────────────────────
+  function handleAddCompatRow() {
+    setPart(prev => ({
+      ...prev,
+      compatRows: [
+        ...prev.compatRows,
+        { car_make_id: '', car_model_id: '', car_sub_model_id: '', from_year: '', to_year: '', models: [], subModels: [] },
+      ],
+    }))
+  }
+
+  function handleRemoveCompatRow(i) {
+    setPart(prev => ({ ...prev, compatRows: prev.compatRows.filter((_, idx) => idx !== i) }))
+  }
+
+  async function handleCompatChange(i, field, value) {
+    setPart(prev => {
+      const rows = [...prev.compatRows]
+      rows[i] = { ...rows[i], [field]: value }
+      if (field === 'car_make_id') {
+        rows[i].models        = value ? allModels.filter(m => String(m.make_id) === String(value)) : []
+        rows[i].car_model_id  = ''
+        rows[i].car_sub_model_id = ''
+        rows[i].subModels     = []
+      }
+      if (field === 'car_model_id') {
+        rows[i].car_sub_model_id = ''
+        rows[i].subModels        = []
+      }
+      return { ...prev, compatRows: rows }
+    })
+
+    // Fetch sub-models when model is chosen
+    if (field === 'car_model_id' && value) {
+      try {
+        const res = await axios.get(`${API}/parts/car-sub-models`, { params: { model_id: value } })
+        setPart(prev => {
+          const rows = [...prev.compatRows]
+          rows[i] = { ...rows[i], subModels: res.data || [] }
+          return { ...prev, compatRows: rows }
+        })
+      } catch { /* sub-models optional */ }
     }
+  }
 
+  // ── Validate & Submit ─────────────────────────────────────────────────────
+  function validatePart() {
+    const errs = {}
+    if (!part.name.trim() && !part.selectedPart) errs.name = 'Part name is required.'
+    if (!part.price || Number(part.price) <= 0)   errs.price = 'Price must be > 0.'
+    if (part.quantity === '' || Number(part.quantity) < 0) errs.quantity = 'Quantity required.'
+    if (part.from_year && part.to_year && Number(part.from_year) > Number(part.to_year))
+      errs.to_year = 'To year must be ≥ from year.'
     return errs
   }
 
-  async function handleSubmit(e) {
+  async function handleAddPart(e) {
     e.preventDefault()
-    const errs = validate()
-    if (Object.keys(errs).length) { setErrors(errs); return }
-
-    setSaving(true)
-    setApiError('')
+    const errs = validatePart()
+    if (Object.keys(errs).length) { setPartErrors(errs); return }
+    setSaving(true); setSaveError('')
 
     try {
-      const createRes = await axios.post(`${API}/parts/create`, {
-        name: formData.name.trim(),
-        part_number: formData.part_number.trim() || null,
-        brand: formData.brand.trim() || null,
-        category: formData.category.trim() || null,
-      })
+      const token = JSON.parse(localStorage.getItem('auth'))?.access_token
+      const headers = { Authorization: `Bearer ${token}` }
+
+      let part_id
+      if (part.selectedPart) {
+        part_id = part.selectedPart.id
+      } else {
+        const res = await axios.post(`${API}/parts/create`, {
+          name:              part.name.trim(),
+          part_number:       part.part_number.trim() || null,
+          brand:             part.brand?.trim()      || null,
+          category:          part.category           || null,
+          subcategory:       part.subcategory        || null,
+          country_of_origin: part.country_of_origin?.trim() || null,
+          description:       part.description?.trim() || null,
+        }, { headers })
+        part_id = res.data.id
+      }
+
+      const compatible_cars = part.compatRows
+        .filter(r => r.car_model_id)
+        .map(r => ({
+          car_model_id:     Number(r.car_model_id),
+          car_sub_model_id: r.car_sub_model_id ? Number(r.car_sub_model_id) : null,
+          from_year:        r.from_year !== '' ? Number(r.from_year) : null,
+          to_year:          r.to_year   !== '' ? Number(r.to_year)   : null,
+        }))
 
       await axios.post(`${API}/parts/add-to-garage`, {
-        part_id: createRes.data.id,
-        car_model_id: Number(formData.car_model_id),
-        price: Number(formData.price),
-        cost_price: formData.cost_price !== '' ? Number(formData.cost_price) : null,
-        quantity: Number(formData.quantity),
-        from_year: formData.from_year !== '' ? Number(formData.from_year) : null,
-        to_year: formData.to_year !== '' ? Number(formData.to_year) : null,
-        delivery_available: formData.delivery_available,
-        installation_available: formData.installation_available,
-        pickup_available: formData.pickup_available,
-      })
+        part_id,
+        car_model_id:           Number(carModelId),
+        car_sub_model_id:       carSubModelId ? Number(carSubModelId) : null,
+        year:                   year !== '' ? Number(year) : null,
+        price:                  Number(part.price),
+        quantity:               Number(part.quantity),
+        condition:              part.condition,
+        from_year:              part.from_year !== '' ? Number(part.from_year) : null,
+        to_year:                part.to_year   !== '' ? Number(part.to_year)   : null,
+        delivery_available:     part.delivery_available,
+        installation_available: part.installation_available,
+        installation_price:     part.installation_price !== '' ? Number(part.installation_price) : null,
+        compatible_cars,
+      }, { headers })
 
-      setSuccess(true)
-      setTimeout(() => navigate('/garage/inventory'), 1500)
+      setAddedParts(prev => [
+        {
+          id:          Date.now(),
+          name:        part.selectedPart?.name || part.name,
+          part_number: part.part_number || part.selectedPart?.part_number || null,
+          category:    part.category,
+          subcategory: part.subcategory,
+          price:       Number(part.price),
+          quantity:    Number(part.quantity),
+          condition:   part.condition,
+        },
+        ...prev,
+      ])
+
+      // Reset part form, keep car locked
+      setPart({ ...BLANK_PART })
+      setLookupResult(null); setLookupApplied(false); setLookupError('')
+      setCatalogResults([])
+      setPartErrors({})
     } catch (err) {
-      setApiError(err?.response?.data?.error || 'Failed to add part.')
+      setSaveError(err?.response?.data?.error || 'Failed to add part.')
     } finally {
       setSaving(false)
     }
   }
 
-  const makeById = Object.fromEntries(makes.map(m => [m.id, m.name]))
+  function handleDone() {
+    clearSession()
+    navigate('/garage/inventory')
+  }
 
-  if (loading) {
+  function handleBack() {
+    navigate(-1)
+  }
+
+  // ── Loading state ─────────────────────────────────────────────────────────
+  if (dropdownsLoading) {
     return (
       <section className="auth-section">
         <div className="container">
           <div className="auth-card auth-card-wide">
-            <div className="auth-header"><p>Loading form…</p></div>
+            <div className="auth-header"><p>Loading…</p></div>
           </div>
         </div>
       </section>
     )
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
-      <title>Add Part | AutoParts Marketplace</title>
+      <title>Add Parts | AutoParts Marketplace</title>
 
       <section className="auth-section">
         <div className="container">
           <div className="auth-card auth-card-wide">
 
             <div className="auth-header">
-              <h1>Add Part to Inventory</h1>
-              <p>Create a part and link it to your garage inventory.</p>
+              <h1>Add Parts to Inventory</h1>
+              <p>Set the car once, then add all parts for it.</p>
             </div>
 
-            {apiError && <div className="alert alert-danger">{apiError}</div>}
-            {success  && <div className="alert alert-success">Part added! Redirecting to inventory…</div>}
+            {/* Step 1 — Car */}
+            <CarSelector
+              carLocked={carLocked}
+              year={year} setYear={setYear}
+              makes={makes} models={models} subModels={subModels}
+              carMakeId={carMakeId} setCarMakeId={setCarMakeId}
+              carModelId={carModelId} setCarModelId={setCarModelId}
+              carSubModelId={carSubModelId} setCarSubModelId={setCarSubModelId}
+              carErrors={carErrors} setCarErrors={setCarErrors}
+              years={years}
+              onLock={handleLockCar}
+              onUnlock={handleUnlockCar}
+              carLabel={carLabel()}
+            />
 
-            <form onSubmit={handleSubmit} className="auth-form" noValidate>
+            {/* Step 2 — Parts added this session */}
+            <AddedPartsList
+              addedParts={addedParts}
+              onRemove={id => setAddedParts(prev => prev.filter(p => p.id !== id))}
+              onDone={handleDone}
+            />
 
-              <h2 className="form-section-title">Part Information</h2>
-              <div className="form-grid">
+            {/* Step 3 — Add a part form */}
+            {carLocked && (
+              <PartForm
+                part={part} setPF={setPF}
+                partErrors={partErrors} saveError={saveError}
+                saving={saving}
+                catalogResults={catalogResults} catalogLoading={catalogLoading}
+                onCatalogSelect={handleCatalogSelect}
+                onCreateNew={handleCreateNew}
+                onDismissCatalog={() => setCatalogResults([])}
+                carModelId={carModelId}
+                lookupLoading={lookupLoading}
+                lookupResult={lookupResult}
+                lookupError={lookupError}
+                lookupApplied={lookupApplied}
+                onAILookup={handleAILookup}
+                onApplyLookup={handleApplyLookup}
+                onDismissLookup={handleDismissLookup}
+                onCategoryChange={handleCategoryChange}
+                makes={makes} allModels={allModels}
+                onAddCompatRow={handleAddCompatRow}
+                onRemoveCompatRow={handleRemoveCompatRow}
+                onCompatChange={handleCompatChange}
+                onSubmit={handleAddPart}
+                onClear={() => { setPart({ ...BLANK_PART }); setPartErrors({}); setCatalogResults([]) }}
+                year={year}
+                carMakeName={carMakeName}
+                carModelName={carModelName}
+                carSubModelName={carSubModelName}
+              />
+            )}
 
-                <div className="form-group">
-                  <label className="form-label">Part Name</label>
-                  <input
-                    type="text"
-                    name="name"
-                    className={`form-input ${errors.name ? 'input-error' : ''}`}
-                    placeholder="Example: Brake Pad"
-                    value={formData.name}
-                    onChange={handleChange}
-                  />
-                  {errors.name && <small className="form-error">{errors.name}</small>}
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Part Number</label>
-                  <input
-                    type="text"
-                    name="part_number"
-                    className="form-input"
-                    placeholder="Optional part number"
-                    value={formData.part_number}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Brand</label>
-                  <input
-                    type="text"
-                    name="brand"
-                    className="form-input"
-                    placeholder="Example: Bosch"
-                    value={formData.brand}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Category</label>
-                  <input
-                    type="text"
-                    name="category"
-                    className="form-input"
-                    placeholder="Example: Brakes"
-                    value={formData.category}
-                    onChange={handleChange}
-                  />
-                </div>
-
-              </div>
-
-              <h2 className="form-section-title">Compatibility</h2>
-              <div className="form-grid">
-
-                <div className="form-group">
-                  <label className="form-label">Car Make</label>
-                  <select
-                    name="car_make_id"
-                    className="form-input"
-                    value={formData.car_make_id}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select make</option>
-                    {makes.map(make => (
-                      <option key={make.id} value={make.id}>{make.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Car Model</label>
-                  <select
-                    name="car_model_id"
-                    className={`form-input ${errors.car_model_id ? 'input-error' : ''}`}
-                    value={formData.car_model_id}
-                    onChange={handleChange}
-                  >
-                    <option value="">Select model</option>
-                    {models.map(model => (
-                      <option key={model.id} value={model.id}>
-                        {makeById[model.make_id]
-                          ? `${makeById[model.make_id]} - ${model.name}`
-                          : model.name}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.car_model_id && (
-                    <small className="form-error">{errors.car_model_id}</small>
-                  )}
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">From Year</label>
-                  <input
-                    type="number"
-                    name="from_year"
-                    className="form-input"
-                    placeholder="Example: 2018"
-                    value={formData.from_year}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">To Year</label>
-                  <input
-                    type="number"
-                    name="to_year"
-                    className={`form-input ${errors.to_year ? 'input-error' : ''}`}
-                    placeholder="Example: 2022"
-                    value={formData.to_year}
-                    onChange={handleChange}
-                  />
-                  {errors.to_year && <small className="form-error">{errors.to_year}</small>}
-                </div>
-
-              </div>
-
-              <h2 className="form-section-title">Inventory Details</h2>
-              <div className="form-grid">
-
-                <div className="form-group">
-                  <label className="form-label">Price</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="price"
-                    className={`form-input ${errors.price ? 'input-error' : ''}`}
-                    placeholder="Example: 150.00"
-                    value={formData.price}
-                    onChange={handleChange}
-                  />
-                  {errors.price && <small className="form-error">{errors.price}</small>}
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Cost Price</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    name="cost_price"
-                    className="form-input"
-                    placeholder="Optional (for profit tracking)"
-                    value={formData.cost_price}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Quantity</label>
-                  <input
-                    type="number"
-                    name="quantity"
-                    className={`form-input ${errors.quantity ? 'input-error' : ''}`}
-                    placeholder="Example: 5"
-                    value={formData.quantity}
-                    onChange={handleChange}
-                  />
-                  {errors.quantity && <small className="form-error">{errors.quantity}</small>}
-                </div>
-
-              </div>
-
-              <div className="checkbox-grid">
-                <label className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    name="delivery_available"
-                    checked={formData.delivery_available}
-                    onChange={handleChange}
-                  />
-                  <span>Delivery Available</span>
-                </label>
-
-                <label className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    name="installation_available"
-                    checked={formData.installation_available}
-                    onChange={handleChange}
-                  />
-                  <span>Installation Available</span>
-                </label>
-
-                <label className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    name="pickup_available"
-                    checked={formData.pickup_available}
-                    onChange={handleChange}
-                  />
-                  <span>Pickup Available</span>
-                </label>
-              </div>
-
-              <div className="form-actions">
-                <button
-                  type="submit"
-                  className="btn btn-primary form-btn"
-                  disabled={saving || success}
-                >
-                  {saving ? 'Adding…' : 'Add Part'}
+            {/* Footer */}
+            <div className="addpart-footer auth-footer-text">
+              {addedParts.length > 0 ? (
+                <button type="button" className="btn btn-primary" onClick={handleDone}>
+                  ✓ Done — View Inventory ({addedParts.length} added)
                 </button>
-              </div>
-
-            </form>
-
-            <div className="auth-footer-text">
-              <NavLink to="/garage/inventory">← Back to Inventory</NavLink>
+              ) : (
+                <button type="button" className="btn btn-link" onClick={handleBack}>← Back</button>
+              )}
             </div>
 
           </div>

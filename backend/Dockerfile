@@ -26,4 +26,4 @@ EXPOSE 5000
 # Use Gunicorn in production-style startup.
 # For pure development you can swap this for:
 #   CMD ["flask", "run", "--host=0.0.0.0"]
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--reload", "app:create_app()"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "60", "--reload", "app:create_app()"]
